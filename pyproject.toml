@@ -1,0 +1,30 @@
+[project]
+name = "family-finance-advisor"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "anthropic>=0.40.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-frontmatter>=1.1.0",
+    "apscheduler>=3.10.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "sse-starlette>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
