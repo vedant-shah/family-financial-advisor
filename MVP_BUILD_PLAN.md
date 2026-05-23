@@ -83,16 +83,22 @@ Returns a real response.
 **Goal:** `POST /chat` streams a real Claude response with Tier 1 memory loaded from seeded markdown. No frontend yet.
 
 ### Checklist
-- [ ] **(1h)** `backend/config.py` — pydantic-settings, env-driven
-- [ ] **(2h)** `backend/utils/markdown_io.py` — read/write/append/atomic-rename helpers. The **only** module that touches the filesystem.
-- [ ] **(1h)** `backend/agent/llm_provider.py` — thin interface with one method `stream(messages, system, tools, max_tokens, cache_blocks)`. Anthropic implementation. **BYOK seam.**
-- [ ] **(1h)** `backend/agent/aggregator.py` — compute family aggregate financial state from member files. Pure function; both assembler and dashboard will import it.
-- [ ] **(2h)** `backend/agent/assembler.py` — given `(active_member, classifier_output)` produce list of message blocks + system prompt + cache markers. Hardcode `classifier_output={intent: "general"}` for Day 1. Tier 1 only.
-- [ ] **(1h)** `backend/agent/orchestrator.py` — wraps `llm_provider.stream()`. Returns async generator of text deltas.
-- [ ] **(2h)** `backend/main.py` — FastAPI app, `POST /chat` SSE endpoint, CORS for localhost:5173
-- [ ] **(0.5h)** Author `skills/core_system.md` (system-prompt skeleton from PRD §7)
-- [ ] **(0.5h)** Author `skills/surplus_allocation.md` (most likely first-real-conversation skill)
-- [ ] **(1h)** Manual curl test → fix anything broken
+- [x] **(1h)** `backend/config.py` — pydantic-settings, env-driven
+- [x] **(2h)** `backend/utils/markdown_io.py` — read/write/append/atomic-rename helpers. The **only** module that touches the filesystem.
+- [x] **(1h)** `backend/agent/llm_provider.py` — thin interface with one method `stream(messages, system, tools, max_tokens, cache_blocks)`. Anthropic implementation. **BYOK seam.**
+- [x] **(1h)** `backend/agent/aggregator.py` — slimmed to `read_family_name()` only; no computed aggregates (LLM anchoring concern; per-member figures still in profile.md). Context registry + assembler built as M4/M5.
+- [x] **(2h)** `backend/agent/assembler.py` — Tier 1 + skill/memory catalogue. cache=False hard-off Day 1. Catalogue lists 6 playbooks + 10 memory files (classifier_predicted + agent_invoked) as safety net for missed classifier predictions.
+- [x] **(1h)** `backend/agent/orchestrator.py` — pass-through to `provider.stream()`. Day 4 adds tool loop here.
+- [x] **(2h)** `backend/main.py` — FastAPI, `POST /chat` SSE, `GET /health`, CORS. SSE event shape frozen.
+- [x] **(0.5h)** Author `skills/core_system.md` — proactive question-asking, literacy analogies, advisor persona.
+- [x] **(0.5h)** Author `skills/surplus_allocation.md` + 4 additional skill files.
+- [x] **(1h)** Manual curl test → all pass (health, 422 missing header, 400 bad member, 200 streaming, session echo)
+
+**Deviations from original plan:**
+- Aggregator does NOT compute combined income / surplus / net worth / savings rate — numbers anchor the LLM even with caveats. Raw per-member figures stay in profile.md.
+- Skill catalogue expanded to also list all memory files available on demand (fallback for when Day 3 classifier under-predicts).
+- M7.1: cache_r=0, cache_w=0 confirmed. Tier 1 is ~1157 tokens; caching hard-off anyway (cache=False on all SystemBlocks Day 1).
+- M7.2: Sonnet parity confirmed. Model swap is one env-var flip (`MAIN_AGENT_MODEL=claude-sonnet-4-6`). Sonnet proactively attempted `read_context("financial_literacy")` tool call — skill catalogue working as designed; tool ignored Day 1.
 
 ### SSE event shape (FREEZE at end of Day 1)
 ```
