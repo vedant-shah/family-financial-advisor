@@ -12,8 +12,10 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,13 +23,43 @@ from sse_starlette.sse import EventSourceResponse
 
 from backend.agent import pipeline, sessions
 from backend.agent.llm_provider import get_provider
+from backend.agent.memory_updater import close_session
 from backend.agent.pipeline import TurnDone, TurnError, TurnToken
 from backend.config import settings
 from backend.utils import markdown_io
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Family Financial Advisor")
+# Idle poll cadence — sweep stale sessions to summarize and close them.
+_IDLE_SWEEP_SECONDS = 60
+
+
+async def _sweep_idle() -> None:
+    """Summarize and close sessions that have gone idle past the staleness
+    threshold. Runs on the scheduler; failures are isolated per session."""
+    for member, sid in sessions.idle_sessions(time.monotonic()):
+        try:
+            await close_session(member, sid)
+            sessions.close(member)
+        except Exception:
+            logger.exception("idle sweep failed: %s/%s", member, sid)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sched = AsyncIOScheduler()
+    sched.add_job(_sweep_idle, "interval", seconds=_IDLE_SWEEP_SECONDS)
+    sched.start()
+    try:
+        yield
+    finally:
+        sched.shutdown(wait=False)
+
+
+app = FastAPI(title="Family Financial Advisor", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,11 +143,14 @@ async def chat(
 
 
 @app.post("/session/close", status_code=204)
-def session_close(
+async def session_close(
     req: SessionCloseRequest,
     x_member_id: str | None = Header(default=None, alias="X-Member-Id"),
 ) -> Response:
     member = req.member or x_member_id
     if member:
+        active_sid = sessions.get_active(member, time.monotonic())
+        if active_sid is not None:
+            await close_session(member, active_sid)
         sessions.close(member)
     return Response(status_code=204)

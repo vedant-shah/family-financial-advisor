@@ -90,6 +90,19 @@ def get_history(member: str, session_id: str) -> list[dict]:
     return list(_history.get((member, session_id), []))
 
 
+def idle_sessions(now: float) -> list[tuple[str, str]]:
+    """Return (member, session_id) pairs whose active session is past the
+    staleness threshold. Does NOT clear them — the caller summarizes via
+    `close_session` first, then calls `close(member)`. Iterates a copy so the
+    caller can mutate session state during the sweep."""
+    out: list[tuple[str, str]] = []
+    for member, sid in list(_active.items()):
+        ts = _activity.get((member, sid))
+        if ts is not None and is_stale(ts, now):
+            out.append((member, sid))
+    return out
+
+
 def close(member: str) -> bool:
     """Close the active session for `member`. Idempotent.
     Returns True if there was an active session to close."""
