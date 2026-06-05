@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from backend.agent import sessions, transcripts
-from backend.agent.assembler import AssemblyError, ClassifierOutput, assemble
+from backend.agent.assembler import AssemblyError, assemble
+from backend.agent.classifier import classify
 from backend.agent.llm_provider import (
     LLMProvider,
     StreamEnd,
@@ -53,14 +54,6 @@ class TurnError:
 TurnEvent = TurnToken | TurnDone | TurnError
 
 
-# Stubbed until Day 3 wires in the real Haiku classifier.
-_STUB_CLASSIFIER: ClassifierOutput = {
-    "context_level": "FULL",
-    "relevant_memory_files": [],
-    "is_followup": False,
-}
-
-
 async def run_chat_turn(
     *,
     provider: LLMProvider,
@@ -76,10 +69,18 @@ async def run_chat_turn(
         sessions.touch(member, active_sid, now)
         snapshot = sessions.get_history(member, active_sid)
 
+        classification = await classify(
+            provider=provider,
+            member=member,
+            user_message=user_message,
+            history=snapshot,
+            session_id=active_sid,
+        )
+
         try:
             prompt = assemble(
                 active_member=member,
-                classifier_output=_STUB_CLASSIFIER,
+                classifier_output=classification.output,
                 in_session_history=snapshot,
                 user_message=user_message,
                 memory_root=memory_root,
@@ -88,6 +89,14 @@ async def run_chat_turn(
         except AssemblyError as e:
             yield TurnError(str(e))
             return
+
+        logger.info(
+            "assembler: intent=%s level=%s loaded=%s missing=%s",
+            classification.intent,
+            prompt.context_level,
+            prompt.debug.get("loaded", []),
+            prompt.debug.get("missing", []),
+        )
 
         parts: list[str] = []
         async for ev in run_turn(
@@ -134,6 +143,7 @@ async def run_chat_turn(
                 turn_id=turn_id,
                 user_msg=user_message,
                 assistant_msg=assistant_msg,
+                intent=classification.intent,
             )
         )
 

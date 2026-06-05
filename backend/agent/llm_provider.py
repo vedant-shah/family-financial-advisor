@@ -70,6 +70,19 @@ class LLMProvider(Protocol):
         model: str | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 
+    async def complete_json(
+        self,
+        *,
+        system: list[SystemBlock],
+        messages: list[dict],
+        tool: dict,
+        model: str | None = None,
+        max_tokens: int = 1024,
+    ) -> dict:
+        """Non-streaming forced tool-use. Returns the tool's input dict, or {} on
+        empty/error — callers degrade gracefully and must never see an exception."""
+        ...
+
 
 # (input_$/M_tokens, output_$/M_tokens) — approximate public pricing
 _PRICING: dict[str, tuple[float, float]] = {
@@ -205,6 +218,38 @@ class AnthropicProvider:
         except Exception as e:
             logger.exception("unexpected provider error")
             yield StreamError(message=f"unexpected: {e!s}", code="unexpected_error")
+
+    async def complete_json(
+        self,
+        *,
+        system: list[SystemBlock],
+        messages: list[dict],
+        tool: dict,
+        model: str | None = None,
+        max_tokens: int = 1024,
+    ) -> dict:
+        """Forced single tool-use, non-streaming. Returns the first tool_use
+        block's input as a dict; {} on empty result or API error (never raises)."""
+        chosen_model = model or self._default_model
+        try:
+            resp = await self._client.messages.create(
+                model=chosen_model,
+                max_tokens=max_tokens,
+                system=_render_system(system),
+                messages=messages,
+                tools=[tool],
+                tool_choice={"type": "tool", "name": tool["name"]},
+            )
+            for block in resp.content:
+                if getattr(block, "type", None) == "tool_use":
+                    return dict(block.input)
+            return {}
+        except anthropic.APIError:
+            logger.exception("complete_json API error")
+            return {}
+        except Exception:
+            logger.exception("complete_json unexpected error")
+            return {}
 
 
 def get_provider() -> LLMProvider:
