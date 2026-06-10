@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -97,7 +98,18 @@ class SessionCloseRequest(BaseModel):
     member: str | None = None
 
 
+# Member ids are used as path segments under memory/ and sessions/ — restrict
+# to a safe slug so a crafted X-Member-Id can't traverse outside those trees.
+_MEMBER_ID_RE = re.compile(r"^[a-z0-9_-]{1,64}$")
+
+
+def _validate_member_id(member: str) -> None:
+    if not _MEMBER_ID_RE.fullmatch(member):
+        raise HTTPException(status_code=400, detail=f"invalid member id: {member}")
+
+
 def _assert_member_exists(member: str) -> None:
+    _validate_member_id(member)
     member_dir = settings.resolve(settings.memory_dir) / "members" / member
     if not member_dir.is_dir():
         raise HTTPException(status_code=400, detail=f"unknown member: {member}")
@@ -166,6 +178,7 @@ async def session_close(
 ) -> Response:
     member = req.member or x_member_id
     if member:
+        _validate_member_id(member)
         active_sid = sessions.get_active(member, time.monotonic())
         if active_sid is not None:
             await close_session(member, active_sid)
