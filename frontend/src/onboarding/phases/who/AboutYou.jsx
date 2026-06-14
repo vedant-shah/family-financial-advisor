@@ -4,6 +4,7 @@ import { TextField } from '../../ui/TextField'
 import { LabeledSlider } from '../../ui/LabeledSlider'
 import { Segmented } from '../../ui/Segmented'
 import { Whisper } from '../../ui/Whisper'
+import { ComfortPicker } from '../../ui/ComfortPicker'
 import { PrimaryButton } from '../../ui/buttons'
 
 export function AboutYou({ onNext }) {
@@ -15,6 +16,7 @@ export function AboutYou({ onNext }) {
   const [age, setAge] = useState(self?.age ?? 25)
   const [earns, setEarns] = useState(self?.earns ?? true)
   const [occupation, setOccupation] = useState(self?.occupation ?? '')
+  const [moneyComfort, setMoneyComfort] = useState(self?.moneyComfort ?? null)
 
   const save = () => {
     const fields = {
@@ -22,6 +24,7 @@ export function AboutYou({ onNext }) {
       age,
       earns,
       occupation: earns ? occupation.trim() : '',
+      moneyComfort,
       relationship: 'You',
       isSelf: true,
     }
@@ -75,6 +78,12 @@ export function AboutYou({ onNext }) {
           whisper="The kind of work says a lot: how steady the income is, how it could grow."
         />
       )}
+
+      <ComfortPicker
+        label="How comfortable are you with money matters?"
+        value={moneyComfort}
+        onChange={setMoneyComfort}
+      />
 
       <div className="mt-auto pb-2">
         <PrimaryButton disabled={!name.trim()} onClick={save}>

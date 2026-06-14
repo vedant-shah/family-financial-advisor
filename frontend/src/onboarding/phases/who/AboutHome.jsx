@@ -1,31 +1,38 @@
 import { useState } from 'react'
+import { ENDPOINTS } from '../../../lib/api'
 import { useOnboardingStore } from '../../../store/onboardingStore'
+import { useChatStore } from '../../../store/chatStore'
 import { TextField } from '../../ui/TextField'
-import { TapCard } from '../../ui/TapCard'
 import { Whisper } from '../../ui/Whisper'
 import { PrimaryButton } from '../../ui/buttons'
 
-const COMFORT_OPTIONS = [
-  { value: 'starting', title: 'Just starting out', subtitle: 'Most of this is new to me' },
-  { value: 'basics', title: 'I know the basics', subtitle: 'SIPs and FDs, I get the gist' },
-  { value: 'confident', title: 'Pretty confident', subtitle: 'I track my investments myself' },
-]
-
 export function AboutHome() {
   const household = useOnboardingStore((s) => s.household)
-  const self = useOnboardingStore((s) => s.members.find((m) => m.isSelf))
   const setHousehold = useOnboardingStore((s) => s.setHousehold)
-  const updateMember = useOnboardingStore((s) => s.updateMember)
   const markWhoDone = useOnboardingStore((s) => s.markWhoDone)
+  const persistRoster = useOnboardingStore((s) => s.persistRoster)
   const openHub = useOnboardingStore((s) => s.openHub)
+  const setMembers = useChatStore((s) => s.setMembers)
+  const setActiveMember = useChatStore((s) => s.setActiveMember)
+  const resetForMemberSwitch = useChatStore((s) => s.resetForMemberSwitch)
 
   const [city, setCity] = useState(household.city ?? '')
-  const [comfort, setComfort] = useState(self?.moneyComfort ?? null)
 
-  const finish = () => {
+  const finish = async () => {
     setHousehold({ city: city.trim() })
-    if (self && comfort) updateMember(self.id, { moneyComfort: comfort })
     markWhoDone()
+    // Persist the roster, then point the app at the freshly created members.
+    const result = await persistRoster()
+    if (result?.self) {
+      try {
+        const { members } = await fetch(ENDPOINTS.members).then((r) => r.json())
+        setMembers(members)
+      } catch {
+        /* picker refresh is best-effort; it reloads on next app start */
+      }
+      resetForMemberSwitch()
+      setActiveMember(result.self)
+    }
     openHub()
   }
 
@@ -35,7 +42,7 @@ export function AboutHome() {
         <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)]">
           A little about home
         </h1>
-        <Whisper>Two quick things, both optional.</Whisper>
+        <Whisper>One quick thing, totally optional.</Whisper>
       </div>
 
       <TextField
@@ -45,24 +52,6 @@ export function AboutHome() {
         placeholder="e.g. Mumbai"
         whisper="Costs and house prices differ a lot city to city. It keeps the advice realistic."
       />
-
-      <div>
-        <label className="text-sm font-medium text-[var(--color-ink)]">
-          How comfortable are you with money matters?
-        </label>
-        <div className="mt-2 flex flex-col gap-2">
-          {COMFORT_OPTIONS.map((o) => (
-            <TapCard
-              key={o.value}
-              title={o.title}
-              subtitle={o.subtitle}
-              selected={comfort === o.value}
-              onClick={() => setComfort(o.value)}
-            />
-          ))}
-        </div>
-        <Whisper>So the advisor explains things at your pace, never over your head.</Whisper>
-      </div>
 
       <div className="mt-auto pb-2">
         <PrimaryButton onClick={finish}>Finish family setup</PrimaryButton>

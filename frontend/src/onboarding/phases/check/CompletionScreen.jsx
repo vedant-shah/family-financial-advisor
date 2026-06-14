@@ -13,17 +13,21 @@ export function CompletionScreen({ member }) {
   const progress = useOnboardingStore((s) => s.progress)
   const members = useOnboardingStore((s) => s.members)
   const openHub = useOnboardingStore((s) => s.openHub)
+  const persistMemberData = useOnboardingStore((s) => s.persistMemberData)
 
   // Reaching this screen means the member finished their flow. Record it on the
   // backend so the chat stops nudging them. A member not yet in the backend
   // roster (created in the tree, not yet persisted) returns 400, which we
   // ignore until the data milestone creates member dirs.
   useEffect(() => {
+    // Save this member's money/goals slice, then record completion so the chat
+    // stops nudging them. Both are best-effort.
+    persistMemberData(member.id)
     fetch(ENDPOINTS.onboardingComplete, {
       method: 'POST',
       headers: { 'X-Member-Id': member.id },
     }).catch(() => {})
-  }, [member.id])
+  }, [member.id, persistMemberData])
 
   const nextMember = members.find(
     (m) =>

@@ -5,10 +5,12 @@ import { ENDPOINTS } from '../lib/api'
 import { useChatStore } from '../store/chatStore'
 import { useOnboardingStore } from '../store/onboardingStore'
 
-// Soft, once-per-session nudge. If the active member hasn't finished onboarding,
-// invite them to complete it. Shown at most once per browser session per member
-// (sessionStorage), dismissible, and never blocking the chat. App remounts this
-// per active member (keyed), so each member starts from a hidden state.
+// Soft nudge. If the active member hasn't finished onboarding, invite them to
+// complete it. Shown until the member acts on it: dismissing or clicking Finish
+// setup marks it seen for the rest of the browser session (sessionStorage), so a
+// refresh keeps showing it until then but it never nags after they respond.
+// Never blocks the chat. App remounts this per active member (keyed), so each
+// member starts from a hidden state.
 export function OnboardingNudge() {
   const activeMember = useChatStore((s) => s.activeMember)
   const openHub = useOnboardingStore((s) => s.openHub)
@@ -25,7 +27,6 @@ export function OnboardingNudge() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data || data.finished) return
-        sessionStorage.setItem(seenKey, '1')
         setVisible(true)
       })
       .catch(() => {})
@@ -33,6 +34,15 @@ export function OnboardingNudge() {
       cancelled = true
     }
   }, [activeMember])
+
+  // Mark seen only when the member responds, so a refresh re-shows the nudge
+  // until they actually act on it.
+  function dismiss() {
+    if (activeMember) {
+      sessionStorage.setItem(`onboardingNudgeShown:${activeMember}`, '1')
+    }
+    setVisible(false)
+  }
 
   return (
     <AnimatePresence>
@@ -51,7 +61,7 @@ export function OnboardingNudge() {
           <button
             type="button"
             onClick={() => {
-              setVisible(false)
+              dismiss()
               openHub()
             }}
             className="press-shrink shrink-0 rounded-full bg-[var(--accent)] px-3 py-1 text-[12px] font-semibold text-[var(--accent-ink)] transition-[filter] hover:brightness-105"
@@ -61,7 +71,7 @@ export function OnboardingNudge() {
           <button
             type="button"
             aria-label="Dismiss"
-            onClick={() => setVisible(false)}
+            onClick={dismiss}
             className="press-shrink shrink-0 text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-ink)]"
           >
             <X size={16} weight="bold" />

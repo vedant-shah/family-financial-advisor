@@ -54,11 +54,26 @@ def test_status_rejects_unknown_member(tmp_memory) -> None:
     assert resp.status_code == 400
 
 
-def test_mark_complete_writes_dated_marker(tmp_memory) -> None:
+def test_mark_complete_records_flag_in_profile_frontmatter(tmp_memory) -> None:
     onboarding.mark_complete(tmp_memory, "vedant", today=date(2026, 6, 13))
-    marker = tmp_memory / "members" / "vedant" / "onboarding.md"
-    assert marker.is_file()
-    text = marker.read_text(encoding="utf-8")
-    assert "status: complete" in text
-    assert "completed_at: 2026-06-13" in text
+    # The completion flag lives in profile.md frontmatter, not a separate file.
+    assert not (tmp_memory / "members" / "vedant" / "onboarding.md").exists()
+    profile = tmp_memory / "members" / "vedant" / "profile.md"
+    assert profile.is_file()
+    text = profile.read_text(encoding="utf-8")
+    assert "onboarding_status: complete" in text
+    assert "onboarding_completed_at: '2026-06-13'" in text
+    assert onboarding.is_complete(tmp_memory, "vedant")
+
+
+def test_mark_complete_preserves_existing_profile_blocks(tmp_memory) -> None:
+    # An existing identity block must survive the frontmatter write.
+    profile = tmp_memory / "members" / "vedant" / "profile.md"
+    profile.write_text(
+        "## identity.name\n- name: vedant\n- status: CURRENT\n", encoding="utf-8"
+    )
+    onboarding.mark_complete(tmp_memory, "vedant", today=date(2026, 6, 13))
+    text = profile.read_text(encoding="utf-8")
+    assert "## identity.name" in text
+    assert "- name: vedant" in text
     assert onboarding.is_complete(tmp_memory, "vedant")

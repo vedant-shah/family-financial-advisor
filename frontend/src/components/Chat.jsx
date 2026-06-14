@@ -42,13 +42,43 @@ function bubbleRadius(role, isFirstInGroup, isLastInGroup) {
   return `${base} ${isLastInGroup ? 'rounded-bl-md' : ''}`.trim()
 }
 
+const TAGLINES = [
+  "Let's talk money.",
+  "What's on your mind today?",
+  'Your money, sorted.',
+  'Ask me anything finance.',
+  "Let's make a plan.",
+]
+
+function greetingWord(hour) {
+  if (hour < 12) return 'Good Morning'
+  if (hour < 17) return 'Good Afternoon'
+  return 'Good Evening'
+}
+
+// The advisor marks a new text bubble with a blank line. Split a reply into its
+// bubbles; a reply with no blank line is a single bubble. Empty -> [] so the
+// typing placeholder handles it.
+function splitBubbles(text) {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+}
+
 export function Chat() {
   const messages = useChatStore((s) => s.messages)
   const streaming = useChatStore((s) => s.streaming)
   const error = useChatStore((s) => s.error)
   const setError = useChatStore((s) => s.setError)
+  const activeMember = useChatStore((s) => s.activeMember)
   const { send } = useChat()
   const [text, setText] = useState('')
+  // Picked once per mount so it stays put while typing, not on every keystroke.
+  const [tagline] = useState(
+    () => TAGLINES[Math.floor(Math.random() * TAGLINES.length)],
+  )
+  const greeting = greetingWord(new Date().getHours())
   const containerRef = useRef(null)
   const textareaRef = useRef(null)
 
@@ -84,12 +114,16 @@ export function Chat() {
     <div className="flex flex-col h-full">
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto px-4 py-6"
+        className="flex flex-1 flex-col overflow-y-auto px-4 py-6"
       >
         {messages.length === 0 && (
-          <p className="text-center text-[var(--color-ink-muted)] text-sm mt-12 animate-fade-in">
-            Start the conversation below.
-          </p>
+          <div className="flex flex-1 flex-col items-center justify-center text-center animate-fade-in">
+            <h1 className="text-3xl font-bold text-[var(--color-ink)]">
+              {greeting}
+              {activeMember && <span className="capitalize">, {activeMember}</span>}
+            </h1>
+            <p className="mt-2 text-[var(--color-ink-muted)]">{tagline}</p>
+          </div>
         )}
 
         {messages.map((msg, i) => {
@@ -102,33 +136,52 @@ export function Chat() {
             !isUser && msg.content.length === 0 && streaming
           const groupGap = isFirstInGroup ? 'mt-2.5' : 'mt-0.5'
 
+          // Assistant replies become one bubble per blank-line-separated beat
+          // (texting style). User messages and the typing placeholder are one.
+          const chunks = isEmptyAssistant
+            ? ['']
+            : isUser
+              ? [msg.content]
+              : splitBubbles(msg.content)
+
           return (
             <div
               key={msg.id}
-              className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${groupGap}`}
+              className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} ${groupGap}`}
             >
-              <div
-                className={[
-                  'max-w-[78%] px-3.5 py-2 text-[15px] leading-[1.35]',
-                  bubbleRadius(msg.role, isFirstInGroup, isLastInGroup),
-                  isUser
-                    ? 'bg-[var(--color-imessage-blue)] text-white origin-bottom-right animate-bubble-in-right'
-                    : 'bg-[var(--color-bubble-other)] text-[var(--color-ink)] origin-bottom-left animate-bubble-in-left',
-                ].join(' ')}
-                style={{ willChange: 'transform, opacity' }}
-              >
-                {isEmptyAssistant ? (
-                  <TypingDots />
-                ) : isUser ? (
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                ) : (
-                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-p:leading-snug prose-ul:my-1 prose-ol:my-1 prose-pre:my-2">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {msg.content}
-                    </ReactMarkdown>
+              {chunks.map((chunk, b) => {
+                const lastBubble = b === chunks.length - 1
+                return (
+                  <div
+                    key={b}
+                    className={[
+                      'max-w-[78%] px-3.5 py-2 text-[15px] leading-[1.35]',
+                      b === 0 ? '' : 'mt-0.5',
+                      bubbleRadius(
+                        msg.role,
+                        isFirstInGroup && b === 0,
+                        lastBubble && isLastInGroup,
+                      ),
+                      isUser
+                        ? 'bg-[var(--color-imessage-blue)] text-white origin-bottom-right animate-bubble-in-right'
+                        : 'bg-[var(--color-bubble-other)] text-[var(--color-ink)] origin-bottom-left animate-bubble-in-left',
+                    ].join(' ')}
+                    style={{ willChange: 'transform, opacity' }}
+                  >
+                    {isEmptyAssistant ? (
+                      <TypingDots />
+                    ) : isUser ? (
+                      <p className="whitespace-pre-wrap break-words">{chunk}</p>
+                    ) : (
+                      <div className="prose prose-sm max-w-none prose-p:my-1 prose-p:leading-snug prose-ul:my-1 prose-ol:my-1 prose-pre:my-2">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {chunk}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                )
+              })}
             </div>
           )
         })}

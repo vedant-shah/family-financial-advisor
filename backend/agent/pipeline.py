@@ -28,6 +28,7 @@ from backend.agent.llm_provider import (
 )
 from backend.agent.orchestrator import run_turn
 from backend.agent.transcripts import TranscriptRecord
+from backend.text_utils import to_bubbles
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +104,10 @@ async def run_chat_turn(
             provider=provider, prompt=prompt, max_tokens=max_tokens
         ):
             if isinstance(ev, TextDelta):
+                # Buffer, don't stream raw: the reply must pass through
+                # to_bubbles (em-dash strip + bubble split) before the user
+                # sees it. Emitted once below.
                 parts.append(ev.text)
-                yield TurnToken(ev.text)
             elif isinstance(ev, ToolUseRequest):
                 logger.info("pipeline: tool use ignored on Day 2: %s", ev.name)
                 continue
@@ -129,7 +132,12 @@ async def run_chat_turn(
                 )
                 break
 
-        assistant_msg = "".join(parts)
+        # Single sanitization path: strip em dashes and normalize to blank-line
+        # bubbles before the reply reaches the user or the stored history.
+        assistant_msg = "\n\n".join(to_bubbles("".join(parts)))
+        if assistant_msg:
+            yield TurnToken(assistant_msg)
+
         turn_id = transcripts.turn_id_for(len(snapshot))
 
         sessions.append_history(member, active_sid, "user", user_message)

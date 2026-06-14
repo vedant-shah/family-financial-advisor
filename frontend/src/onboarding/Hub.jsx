@@ -145,44 +145,45 @@ function MemberRow({ member, index }) {
         <ShareButtons member={member} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {MEMBER_PHASES.map(([key, label, pastelName]) => {
-          const done = !!progress?.[key]
-          return (
-            <button
-              key={key}
-              onClick={() => openPhase(key, member.id)}
-              className={
-                'press-shrink flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ' +
-                (done
-                  ? 'border-transparent'
-                  : 'border-[var(--color-border)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]')
-              }
-              style={
-                done
-                  ? {
-                      background: `var(--color-${pastelName}-soft)`,
-                      color: `var(--color-${pastelName})`,
-                    }
-                  : undefined
-              }
-            >
-              {done && <Check size={12} weight="bold" />}
-              {label}
-            </button>
-          )
-        })}
-        <span className="flex-1" />
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center gap-1.5">
+          {MEMBER_PHASES.map(([key, label, pastelName]) => {
+            const done = !!progress?.[key]
+            return (
+              <button
+                key={key}
+                onClick={() => openPhase(key, member.id)}
+                className={
+                  'press-shrink flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ' +
+                  (done
+                    ? 'border-transparent'
+                    : 'border-[var(--color-border)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]')
+                }
+                style={
+                  done
+                    ? {
+                        background: `var(--color-${pastelName}-soft)`,
+                        color: `var(--color-${pastelName})`,
+                      }
+                    : undefined
+                }
+              >
+                {done && <Check size={12} weight="bold" />}
+                {label}
+              </button>
+            )
+          })}
+        </div>
         {next ? (
           <button
             onClick={() => openPhase(next[0], member.id)}
-            className="press-shrink flex items-center gap-1 rounded-full bg-[var(--color-mint)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--color-mint-ink)]"
+            className="press-shrink flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-mint)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--color-mint-ink)]"
           >
             {doneCount === 0 ? 'Start' : 'Continue'}
             <CaretRight size={12} weight="bold" />
           </button>
         ) : (
-          <span className="flex items-center gap-1 text-[12px] font-medium text-[var(--color-mint)]">
+          <span className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-[var(--color-mint)]">
             <Check size={12} weight="bold" />
             All set
           </span>

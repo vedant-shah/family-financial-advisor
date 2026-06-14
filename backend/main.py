@@ -15,7 +15,7 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import AsyncIterator
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -24,7 +24,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from backend.agent import durability, onboarding, pipeline, sessions
+from backend.agent import (
+    durability,
+    onboarding,
+    onboarding_persist,
+    pipeline,
+    roster,
+    sessions,
+)
 from backend.agent.llm_provider import get_provider
 from backend.agent.memory_updater import close_session
 from backend.agent.pipeline import TurnDone, TurnError, TurnToken
@@ -151,6 +158,70 @@ def onboarding_complete(x_member_id: str = Header(..., alias="X-Member-Id")) -> 
     _assert_member_exists(x_member_id)
     onboarding.mark_complete(settings.resolve(settings.memory_dir), x_member_id)
     return {"finished": True}
+
+
+class RosterMember(BaseModel):
+    name: str
+    relationship: str | None = None
+    age: int | None = None
+    earns: bool = False
+    occupation: str | None = None
+    livesElsewhere: bool = False
+    isSelf: bool = False
+    moneyComfort: str | None = None
+    id: str | None = None  # canonical id when re-submitting a known member
+
+
+class RosterRequest(BaseModel):
+    members: list[RosterMember]
+
+
+@app.post("/api/onboarding/roster")
+def onboarding_roster(req: RosterRequest) -> dict:
+    """Persist the onboarding "who" phase: create/update each member's dir +
+    identity profile.md, and return the canonical ids so the client can re-key
+    its local draft. Create-or-update only — never deletes."""
+    if sum(1 for m in req.members if m.isSelf) != 1:
+        raise HTTPException(
+            status_code=400, detail="exactly one member must be marked as self"
+        )
+    for m in req.members:
+        if m.id is not None:
+            _validate_member_id(m.id)
+    persisted = roster.persist_roster(
+        settings.resolve(settings.memory_dir),
+        [m.model_dump() for m in req.members],
+        today=date.today().isoformat(),
+    )
+    return {
+        "self": next(p.id for p in persisted if p.is_self),
+        "members": [
+            {"id": p.id, "name": p.name, "isSelf": p.is_self} for p in persisted
+        ],
+    }
+
+
+class MemberDataRequest(BaseModel):
+    finances: dict = {}
+    goals: list[dict] = []
+    checks: dict = {}
+    supportMonthly: str | None = None
+
+
+@app.post("/api/onboarding/member-data")
+def onboarding_member_data(
+    req: MemberDataRequest, x_member_id: str = Header(..., alias="X-Member-Id")
+) -> dict:
+    """Persist one member's onboarding money/goals slice into their memory files.
+    Runs after the roster created the member dir, so the member must exist."""
+    _assert_member_exists(x_member_id)
+    onboarding_persist.persist_member_data(
+        settings.resolve(settings.memory_dir),
+        x_member_id,
+        req.model_dump(),
+        today=date.today().isoformat(),
+    )
+    return {"saved": True}
 
 
 @app.post("/chat")

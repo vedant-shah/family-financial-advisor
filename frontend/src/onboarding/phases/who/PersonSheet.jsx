@@ -6,6 +6,7 @@ import { TextField } from '../../ui/TextField'
 import { LabeledSlider } from '../../ui/LabeledSlider'
 import { Segmented } from '../../ui/Segmented'
 import { Whisper } from '../../ui/Whisper'
+import { ComfortPicker } from '../../ui/ComfortPicker'
 import { PrimaryButton, GhostButton } from '../../ui/buttons'
 
 const RELATIONSHIPS = [
@@ -34,14 +35,26 @@ function PersonForm({ member, onClose }) {
   const updateMember = useOnboardingStore((s) => s.updateMember)
   const removeMember = useOnboardingStore((s) => s.removeMember)
 
+  const allMembers = useOnboardingStore((s) => s.members)
+
   const [relationship, setRelationship] = useState(member?.relationship ?? null)
   const [name, setName] = useState(member?.name ?? '')
   const [age, setAge] = useState(member?.age ?? 45)
   const [earns, setEarns] = useState(member?.earns ?? false)
   const [occupation, setOccupation] = useState(member?.occupation ?? '')
   const [livesElsewhere, setLivesElsewhere] = useState(member?.livesElsewhere ?? false)
+  const [supports, setSupports] = useState(member?.supports ?? [])
+  const [supportMonthly, setSupportMonthly] = useState(member?.supportMonthly ?? '')
+  const [moneyComfort, setMoneyComfort] = useState(member?.moneyComfort ?? null)
 
   const isSelf = !!member?.isSelf
+  // People this person could provide for: everyone in the family but themselves.
+  const others = allMembers.filter((m) => m.id !== member?.id)
+
+  const toggleSupport = (id) =>
+    setSupports((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+    )
 
   const save = () => {
     const fields = {
@@ -51,6 +64,10 @@ function PersonForm({ member, onClose }) {
       earns,
       occupation: earns ? occupation.trim() : '',
       livesElsewhere,
+      // Dependents are explicit, and only meaningful for someone who earns.
+      supports: earns ? supports : [],
+      supportMonthly: earns ? String(supportMonthly).trim() || null : null,
+      moneyComfort,
     }
     if (member) updateMember(member.id, fields)
     else addMember(fields)
@@ -113,6 +130,45 @@ function PersonForm({ member, onClose }) {
           placeholder="e.g. Teacher, runs a shop…"
         />
       )}
+
+      {earns && others.length > 0 && (
+        <div>
+          <label className="text-sm font-medium text-[var(--color-ink)]">
+            {isSelf ? 'Who do you support?' : `Who does ${name.trim() || 'they'} support?`}
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {others.map((o) => (
+              <Chip
+                key={o.id}
+                selected={supports.includes(o.id)}
+                onClick={() => toggleSupport(o.id)}
+              >
+                {o.isSelf ? 'You' : o.name}
+              </Chip>
+            ))}
+          </div>
+          <Whisper>
+            Pick the people whose bills they actually cover, not just whoever isn&apos;t
+            earning.
+          </Whisper>
+          {supports.length > 0 && (
+            <div className="mt-3">
+              <TextField
+                label="Roughly how much a month, total?"
+                value={supportMonthly}
+                onChange={(e) => setSupportMonthly(e.target.value)}
+                placeholder="e.g. 20000"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      <ComfortPicker
+        label={isSelf ? 'How comfortable are you with money?' : 'How comfortable are they with money?'}
+        value={moneyComfort}
+        onChange={setMoneyComfort}
+      />
 
       <div>
         <Chip selected={livesElsewhere} onClick={() => setLivesElsewhere(!livesElsewhere)}>

@@ -174,6 +174,85 @@ def record_status_transition(
 # stamped on every entry; `last_updated` defaults to `as_of` when not supplied.
 
 
+def write_profile(
+    writer: str,
+    *,
+    name: str,
+    relationship: str,
+    as_of: str,
+    age: int | None = None,
+    earning_status: str | None = None,
+    occupation: str | None = None,
+    financial_literacy: str | None = None,
+    source: str = "onboarding_form",
+    confidence: str = "high",
+    last_updated: str | None = None,
+) -> dict[str, UpsertOutcome]:
+    """Upsert IDENTITY facts into the writer's profile.md (current-value,
+    MEMORY_DATA_MODEL §4) — one block per field (`identity.<field>`) so a later
+    single-field correction supersedes cleanly. NO money figures live here.
+
+    Empty/None fields are skipped (lazy creation, §6). The per-field dedup id
+    encodes the value, so an unchanged resubmit is a NOOP while a changed value
+    supersedes the prior block. `writer` is the member's own id, so this writes
+    only that member's tree and the cross-member guard passes naturally."""
+    p = _member_file(writer, "profile.md")
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    fields: dict[str, str | None] = {
+        "name": name,
+        "relationship": relationship,
+        "age": str(age) if age is not None else None,
+        "earning_status": earning_status,
+        "occupation": occupation,
+        "financial_literacy": financial_literacy,
+    }
+    outcomes: dict[str, UpsertOutcome] = {}
+    for field, value in fields.items():
+        if not value:
+            continue
+        outcomes[field] = upsert_current_value(
+            p,
+            key=f"identity.{field}",
+            fields={field: value},
+            prov=prov,
+            dedup_id=f"{writer}:profile:{field}={value}",
+        )
+    return outcomes
+
+
+def write_insurance(
+    writer: str,
+    *,
+    kind: str,
+    covered: bool,
+    cover: str | None = None,
+    source: str = "onboarding_form",
+    confidence: str = "high",
+    as_of: str,
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Upsert an insurance coverage fact into the writer's profile.md
+    (current-value), keyed `protection.<kind>` (kind = `health` | `term`):
+    whether they're covered and, when known, the sum assured. Per product
+    decision insurance lives in profile alongside identity; note the `cover`
+    amount is a money figure, an accepted deviation from profile being money-free."""
+    p = _member_file(writer, "profile.md")
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    fields: dict[str, str] = {"covered": "yes" if covered else "no"}
+    if cover:
+        fields["cover"] = cover
+    return upsert_current_value(
+        p, key=f"protection.{kind}", fields=fields, prov=prov, dedup_id=dedup_id
+    )
+
+
 def write_financial_fact(
     writer: str,
     *,

@@ -1,7 +1,9 @@
 import { create } from 'zustand'
+import { ENDPOINTS } from '../lib/api'
 
-// UI-only onboarding draft. Nothing here calls the backend, the draft lives
-// in localStorage until the data milestone wires real endpoints.
+// Onboarding draft, mirrored to localStorage. Identity is also persisted to the
+// backend at the end of the "who" phase via persistRoster; money/goals stay in
+// the draft until their own persistence round.
 
 const STORAGE_KEY = 'onboardingDraft'
 
@@ -9,7 +11,10 @@ export const PHASES = ['who', 'goals', 'money', 'check']
 
 const EMPTY_DRAFT = {
   household: { city: '', spend: null, whoPays: [] },
-  members: [], // { id, name, relationship, age, earns, occupation, livesElsewhere, isSelf, moneyComfort }
+  members: [], // { id, name, relationship, age, earns, occupation, livesElsewhere, isSelf, moneyComfort, supports, supportMonthly }
+  // supports: ids of the members THIS person financially provides for (their
+  // dependents, captured explicitly, never inferred from earning status).
+  // supportMonthly: rough total monthly support amount (money; persists later).
   progress: {}, // memberId -> { goals: bool, money: bool, check: bool }
   goals: {}, // memberId -> [ { id, title, bucket, suggestionKey, amount, notSure } ]
   // memberId -> { incomes: [{key,label,amount,cadence}], loans: [{key,label,emi,remaining}],
@@ -91,6 +96,8 @@ export const useOnboardingStore = create((set, get) => ({
       livesElsewhere: false,
       isSelf: false,
       moneyComfort: null,
+      supports: [],
+      supportMonthly: null,
       ...fields,
       id: uniqueId(fields.name, members),
     }
@@ -106,7 +113,14 @@ export const useOnboardingStore = create((set, get) => ({
   },
 
   removeMember: (id) => {
-    const members = get().members.filter((m) => m.id !== id)
+    // Drop the member, and strip them from anyone who listed them as a dependent.
+    const members = get()
+      .members.filter((m) => m.id !== id)
+      .map((m) =>
+        m.supports?.includes(id)
+          ? { ...m, supports: m.supports.filter((d) => d !== id) }
+          : m,
+      )
     const progress = { ...get().progress }
     delete progress[id]
     const goals = { ...get().goals }
@@ -131,6 +145,85 @@ export const useOnboardingStore = create((set, get) => ({
   },
 
   markWhoDone: () => persist(set, get, { whoDone: true }),
+
+  // Persist the family roster (identity) to the backend, then adopt the
+  // canonical member ids it returns: re-key every member id, their `supports`
+  // lists, and the per-member maps (progress/goals/finances/checks) + whoPays.
+  // Best-effort: a failed POST leaves the local draft intact to retry. Returns
+  // { self: <canonical self id> } on success, else null.
+  persistRoster: async () => {
+    const members = get().members
+    if (members.length === 0) return null
+    const payload = {
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        relationship: m.isSelf ? 'self' : m.relationship,
+        age: m.age,
+        earns: m.earns,
+        occupation: m.occupation,
+        livesElsewhere: m.livesElsewhere,
+        isSelf: m.isSelf,
+        moneyComfort: m.moneyComfort,
+      })),
+    }
+    let data
+    try {
+      const r = await fetch(ENDPOINTS.onboardingRoster, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!r.ok) return null
+      data = await r.json()
+    } catch {
+      return null
+    }
+    // Response members are in request order; map old id -> canonical id.
+    const idMap = {}
+    members.forEach((m, i) => {
+      const canonical = data.members?.[i]?.id
+      if (canonical) idMap[m.id] = canonical
+    })
+    const remap = (id) => idMap[id] ?? id
+    const rekey = (obj) =>
+      Object.fromEntries(Object.entries(obj).map(([k, v]) => [remap(k), v]))
+    const { progress, goals, finances, checks, household } = get()
+    persist(set, get, {
+      members: members.map((m) => ({
+        ...m,
+        id: remap(m.id),
+        supports: (m.supports ?? []).map(remap),
+      })),
+      progress: rekey(progress),
+      goals: rekey(goals),
+      finances: rekey(finances),
+      checks: rekey(checks),
+      household: { ...household, whoPays: household.whoPays.map(remap) },
+    })
+    return { self: data.self }
+  },
+
+  // Persist one member's money/goals slice to the backend (best-effort). Runs
+  // after the roster created their dir; a failed POST leaves the draft to retry.
+  persistMemberData: async (memberId) => {
+    const member = get().members.find((m) => m.id === memberId)
+    const payload = {
+      finances: get().finances[memberId] ?? {},
+      goals: get().goals[memberId] ?? [],
+      checks: get().checks[memberId] ?? {},
+      supportMonthly: member?.supportMonthly ?? null,
+    }
+    try {
+      await fetch(ENDPOINTS.onboardingMemberData, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Member-Id': memberId },
+        body: JSON.stringify(payload),
+      })
+    } catch {
+      /* best-effort; the draft stays for retry */
+    }
+  },
 
   markPhaseDone: (memberId, phase) => {
     const prev = get().progress[memberId] || {}
