@@ -22,6 +22,15 @@ def _write_transcript(member: str, session_id: str) -> None:
     )
 
 
+def test_summarizer_prompt_demands_tool_call():
+    # Model-level mitigation of the silent-loss watch-point: with tool_choice
+    # "auto" (thinking on) the model could reply in text and skip the tool, so
+    # the prompt must explicitly require always calling it. Guarding the phrase
+    # against accidental deletion (the code-level None guard is the backstop).
+    sys = memory_updater._SUMMARIZER_SYSTEM.lower()
+    assert "always call the `summarize` tool" in sys
+
+
 async def test_happy_path_writes_summary_and_recommendation(tmp_memory, fake_provider):
     fake_provider.payload = {
         "summary_3_lines": ["talked surplus", "park 5L", "liquid fund"],
