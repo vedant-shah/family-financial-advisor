@@ -318,3 +318,87 @@ as a distinct entity (lives in profile/household), transaction-level data
 - Extend the extractor schema with `financial_fact_updates`, `goal_updates`,
   `inferences`; wire the two-stage reconcile in `_dispatch`, including the §7
   cross-member staging and §8 ambiguity/conflict handling.
+
+---
+
+## 16. ADR — Agentic surgical edit for write-back reconciliation (2026-06-15)
+
+> Status: **accepted**. Supersedes the "exact-key matching" half of §12's v1
+> notes. The §1–§11 data model, modes, provenance, and authority precedence are
+> unchanged — this ADR only changes *how the extractor decides what to write*.
+
+### Context
+
+The §12 v1 pipeline runs the extractor **blind**: stage 1 reads only the
+transcript (no memory access) and emits flat candidate lists; stage 2 routes
+each candidate to a writer that matches on an **exact key** (`category.label`).
+A memory-free extractor cannot know an existing block exists, so it re-states
+facts under slightly different labels. Observed on live data
+(`members/vedant/finances.md`):
+
+- **#2 duplicate fact, two keys** — `expense.total` (onboarding, 25000) and
+  `expense.personal spending` (conversation, 25000) coexist as two CURRENT
+  blocks for the same money.
+- **#6 key-name drift** — free-form labels (`expense.mutual fund SIPs`) diverge
+  from the onboarding schema; exact-key matching can never reconcile them.
+- **#4 / #5 mis-categorization** — `income.previous salary` stored as CURRENT;
+  a SIP filed under `expense`. (Addressed separately by the prompt-tightening
+  slice + model upgrade.)
+
+Exact-key matching is the root cause of #2/#6: only a reader that *sees* the
+existing block can tell "personal spending" is the same fact as "total".
+
+### Decision
+
+**Agentic surgical edit**, modeled on how Claude Code manages file-based memory:
+
+1. The extractor is given the **relevant existing memory file(s)** for the
+   member, with their `<!-- id:... -->` markers intact.
+2. It emits **edit operations** that reference those block ids —
+   `update` / `append` / `supersede` — instead of blind candidates. Only an LLM
+   can judge that "personal spending" ≡ the existing "total" block; it expresses
+   that judgment by targeting the existing id rather than inventing a new key.
+3. A **deterministic apply layer** executes the ops through the *existing*
+   `current_value` primitives, so the §3 authority guard, value-equality NOOP,
+   and supersede-keeps-history all still fire. **The op is a request, not a
+   command** — "the LLM proposes, code disposes." A low-authority `update`
+   against a higher-authority block still stages a discrepancy; it never clobbers.
+
+### Rejected alternatives
+
+- **Fixed key schema** — enumerate every allowed key. Rejected: too rigid, kills
+  the LLM's inferential flexibility, and the key set grows unbounded across
+  files. (User pushback, 2026-06-13.)
+- **Vector store / semantic search** — rejected as the wrong tool. It is a
+  *read* mechanism; our problem is *writes*. Memory is tiny (fits in context —
+  nothing to retrieve) and carries no provenance/authority model. Even Claude
+  Code does not use vectors for this. Deferred only as a possible future
+  episodic-recall add-on over old transcripts.
+
+### Decisions within the design
+
+- **Hallucinated / bad `target_id`** (the LLM references a non-existent block):
+  **append as a new block** (user's call, 2026-06-15). Lower-friction than
+  staging to `working/` for review; the value-equality NOOP + dedup guard
+  mitigate the case where the id was merely mistyped against an identical value.
+
+### Consequences
+
+- Closes #2 and #6 (the extractor reconciles against what already exists).
+- Cost: existing memory now rides in the extractor prompt on every session
+  close (acceptable — memory is small; measured after the de-blind slice).
+- Risk: the frontmatter stripper must **not** remove `<!-- id:... -->` comments,
+  or the extractor loses its targeting anchor. Guarded by an explicit test.
+
+### Invariants preserved (unchanged from §1–§11)
+
+Cross-member isolation (writer = active member; other-member facts → `working/`),
+source-authority precedence, the four update modes
+(append / current-value / dated-log / narrative), and idempotency via `dedup_id`.
+
+### Build sequence
+
+`M0` this ADR + id-premise verification → `M1` prompt-tightening (also closes the
+silent-extraction-loss watch-point) ‖ `M2` staleness caveats → `M3` de-blind the
+extractor → `M4` edit-op schema + apply layer (the core rewrite; closes #2/#6) →
+`M5` promote stranded family members (#7).
