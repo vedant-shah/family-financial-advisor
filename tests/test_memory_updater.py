@@ -22,6 +22,21 @@ def _write_transcript(member: str, session_id: str) -> None:
     )
 
 
+def test_financial_cadence_excludes_one_time():
+    # One-off items must not be filable as recurring cash flow, so the financial
+    # cadence enum offers only recurring options (forcing function for routing
+    # one-offs to life_events instead — they'd otherwise sit in finances forever).
+    cadence_enum = memory_updater._SUMMARIZE_TOOL["input_schema"]["properties"][
+        "financial_fact_updates"]["items"]["properties"]["cadence"]["enum"]
+    assert "one_time" not in cadence_enum
+    assert "monthly" in cadence_enum and "annual" in cadence_enum
+
+
+def test_prompt_routes_one_off_to_life_events():
+    sys = memory_updater._SUMMARIZER_SYSTEM.lower()
+    assert "one-off" in sys  # the explicit routing rule for purchases/trips/windfalls
+
+
 def test_summarizer_prompt_demands_tool_call():
     # Model-level mitigation of the silent-loss watch-point: with tool_choice
     # "auto" (thinking on) the model could reply in text and skip the tool, so

@@ -110,18 +110,20 @@ INSTRUCTIONS
 8. You may be shown the member's EXISTING MEMORY. When a financial fact or asset you report is a CHANGE to one already there, set its `target_id` to that block's id (from its `<!-- id:... -->` marker) so it updates in place instead of creating a duplicate. Match by MEANING, not exact label — "personal spending" and an existing "total expense" are the same fact, so target it. Omit `target_id` only for a genuinely new fact.
 
 DO
-- financial_fact_updates: income, expense, or liability changes the member states — category, a short label in their own words, the amount as stated, and cadence.
+- financial_fact_updates: RECURRING income, expense, or liability the member states — a monthly/annual salary, an ongoing recurring expense, a standing liability. Give category, a short label in their own words, the amount, and cadence (monthly or annual). This file is the recurring cash-flow picture, NOT a list of one-off transactions.
 - asset_updates: assets the member says they HOLD — cash/savings (e.g. an emergency fund), fixed deposits, EPF/PPF, gold, property, or a fund/investment balance. Give the asset class, a short label in their own words, and the value as stated.
 - goal_updates: goals set, refined, completed, or cancelled — the action, plus target figure and horizon when stated.
 - inferences: behavioral signals the conversation reveals — risk tolerance and horizon (kind "risk"), or loss aversion, decision style, liquidity comfort, financial anxiety (kind "behavior") — each with its basis and an honest confidence.
 - cross_member_observations: anything the member says about ANOTHER person (e.g. "my dad is retiring next year") — the observation, who it is about, and the basis.
-- new_recommendations, life_events_stated, status_transitions: advice the advisor gave, life events stated, and any explicit status change to a prior goal or recommendation.
+- life_events_stated: events the member states — occurred or anticipated — INCLUDING one-off purchases, planned trips, and one-time windfalls (a new gadget, a vacation, an expected bonus or leave encashment). These are the home for anything one-off; they never go into financial_fact_updates.
+- new_recommendations, status_transitions: advice the advisor gave, and any explicit status change to a prior goal or recommendation.
 - Use the member's own framing for labels, titles, and topics, and keep each basis to one short clause.
 
 DON'T
 - Don't INVENT or estimate a figure the member did not give. Record an income, balance, or asset value only when the member states it; if they say something changed but give no number, report that it changed and omit the figure. A precise figure the member DOES state should be captured (a later upload supersedes it) — capturing a stated value is not "inventing".
 - Don't record a PREVIOUS or no-longer-true figure as a current fact. If the member contrasts an old value with a new one ("take-home is 1.4L now, up from 1.1"), report only the current one (1.4L); the old number is context, not a fact to store. A previous salary is never a current income.
 - Don't file a recurring INVESTMENT contribution as an expense. A monthly SIP, mutual-fund contribution, or money put into an investment is an asset_update (the holding it builds), not an expense. Rent, EMIs, bills, and family support are expenses.
+- Don't put a ONE-OFF purchase, planned trip, or one-time windfall into financial_fact_updates or asset_updates — a single gadget, a vacation, an expected bonus or leave payout is not recurring cash flow and would sit in the finances file forever as if ongoing. Record it as a life_event instead.
 - Don't flip a behavioral read on a single offhand remark. Record an inference only when the conversation genuinely reveals it, and set confidence honestly: low for a passing hint, med for a clear signal, and high ONLY for a pattern that is explicitly stated or repeated across the conversation — never high on just one or two datapoints.
 - Don't write a fact about another person into this member's record — put it in cross_member_observations, never as this member's own fact.
 - Don't pad. Omit a field rather than fill it with a guess.
@@ -192,7 +194,7 @@ _SUMMARIZE_TOOL = {
                         "value": {"type": "string"},
                         "cadence": {
                             "type": "string",
-                            "enum": ["monthly", "annual", "one_time"],
+                            "enum": ["monthly", "annual"],
                         },
                         "basis": {"type": "string"},
                         "target_id": {
