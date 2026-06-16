@@ -59,8 +59,15 @@ Every **current-value** and **dated-log** entry carries:
 **Source-authority precedence** (governs supersede):
 
 ```
-document_upload ≈ brokerage_sync  >  onboarding_form  >  conversation  >  inference
+document_upload ≈ brokerage_sync  >  conversation  >  onboarding_form ≈ onboarding_quiz  >  inference
 ```
+
+> **Self-stated facts are authoritative** (decision 2026-06-16). A first-person
+> conversational statement outranks the onboarding form: the user is the source
+> of truth, and a later correction ("I actually earn 1.15, not 1.2") should
+> supersede the older form value cleanly rather than stage silently. Objective
+> documents/syncs (uploads, brokerage) remain the guardrail *above* conversation —
+> a casual remark still never overrides a bank statement.
 
 A lower-authority candidate does **not** silently overwrite a higher one. It is
 either **superseded-but-flagged** (written with its low confidence + a

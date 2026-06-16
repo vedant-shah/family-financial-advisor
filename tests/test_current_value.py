@@ -35,10 +35,35 @@ def _prov(source: str, confidence: str = "high", day: str = "2026-06-08") -> Pro
 # ---------------------------------------------------------------------------
 
 def test_authority_ordering():
+    # Self-stated facts are authoritative: a first-person conversational statement
+    # outranks the onboarding form (the user is the source of truth; recency wins),
+    # but uploads / brokerage syncs remain the ground-truth guardrail above it.
     assert authority_of("document_upload") == authority_of("brokerage_sync")
-    assert authority_of("document_upload") > authority_of("onboarding_form")
-    assert authority_of("onboarding_form") > authority_of("conversation")
-    assert authority_of("conversation") > authority_of("inference")
+    assert authority_of("document_upload") > authority_of("conversation")
+    assert authority_of("conversation") > authority_of("onboarding_form")
+    assert authority_of("onboarding_form") == authority_of("onboarding_quiz")
+    assert authority_of("onboarding_form") > authority_of("inference")
+
+
+def test_conversation_supersedes_onboarding(tmp_path):
+    # The behavior the reorder buys: a later conversational correction of an
+    # onboarding-sourced value updates it in place (old kept as superseded
+    # history), rather than staging silently.
+    f = tmp_path / "finances.md"
+    upsert_current_value(
+        f, key="income.salary", fields={"value": "120000"},
+        prov=_prov("onboarding_form", "high"), dedup_id="id_onb",
+    )
+    out = upsert_current_value(
+        f, key="income.salary", fields={"value": "115000"},
+        prov=_prov("conversation", "low"), dedup_id="id_conv",
+    )
+    assert out is UpsertOutcome.SUPERSEDED
+    text = f.read_text()
+    assert "- value: 115000" in text
+    assert "- status: SUPERSEDED" in text  # old onboarding value kept as history
+    current = next(b for b in text.split("## ") if "115000" in b)
+    assert "status: CURRENT" in current
 
 
 # ---------------------------------------------------------------------------
@@ -174,15 +199,15 @@ def test_lower_authority_conflict_stages(tmp_path):
 def test_lower_authority_same_value_is_noop_not_staged(tmp_path):
     # A lower-authority source that merely RESTATES the current value is NOT a
     # conflict and must not be staged. Regression: identical 120000 from
-    # conversation vs onboarding was wrongly flagged NEEDS_CONFIRMATION.
+    # conversation vs an upload was wrongly flagged NEEDS_CONFIRMATION.
     f = tmp_path / "finances.md"
     disc = tmp_path / "discrepancies.md"
     upsert_current_value(
         f,
         key="income.salary",
         fields={"value": "120000"},
-        prov=_prov("onboarding_form", "high"),
-        dedup_id="id_onb",
+        prov=_prov("document_upload", "high"),
+        dedup_id="id_upload",
     )
     out = upsert_current_value(
         f,
@@ -196,7 +221,7 @@ def test_lower_authority_same_value_is_noop_not_staged(tmp_path):
     assert not disc.exists() or "income.salary" not in disc.read_text()
     text = f.read_text()
     assert text.count("## income.salary") == 1
-    assert "- source: onboarding_form" in text
+    assert "- source: document_upload" in text
 
 
 def test_lower_authority_normalized_same_value_is_noop(tmp_path):
@@ -205,7 +230,7 @@ def test_lower_authority_normalized_same_value_is_noop(tmp_path):
     disc = tmp_path / "discrepancies.md"
     upsert_current_value(
         f, key="income.salary", fields={"value": "120000"},
-        prov=_prov("onboarding_form", "high"), dedup_id="id_onb",
+        prov=_prov("document_upload", "high"), dedup_id="id_upload",
     )
     out = upsert_current_value(
         f, key="income.salary", fields={"value": "Rs 1,20,000"},
@@ -223,7 +248,7 @@ def test_lower_authority_different_value_still_stages(tmp_path):
     disc = tmp_path / "discrepancies.md"
     upsert_current_value(
         f, key="income.salary", fields={"value": "120000"},
-        prov=_prov("onboarding_form", "high"), dedup_id="id_onb",
+        prov=_prov("document_upload", "high"), dedup_id="id_upload",
     )
     out = upsert_current_value(
         f, key="income.salary", fields={"value": "90000"},

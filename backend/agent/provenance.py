@@ -10,14 +10,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Source-authority precedence (MEMORY_DATA_MODEL §3):
-#   document_upload ≈ brokerage_sync > onboarding_form ≈ onboarding_quiz
-#                                    > conversation > inference
+#   document_upload ≈ brokerage_sync > conversation
+#                                    > onboarding_form ≈ onboarding_quiz > inference
+# Self-stated facts are authoritative: a first-person conversational statement
+# outranks the onboarding form (the user is the source of truth, and a later
+# correction should win), while objective documents/syncs stay above everything.
 _AUTHORITY: dict[str, int] = {
     "document_upload": 4,
     "brokerage_sync": 4,
-    "onboarding_form": 3,
-    "onboarding_quiz": 3,
-    "conversation": 2,
+    "conversation": 3,
+    "onboarding_form": 2,
+    "onboarding_quiz": 2,
     "inference": 1,
 }
 
