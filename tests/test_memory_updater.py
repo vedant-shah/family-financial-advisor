@@ -230,6 +230,26 @@ async def test_cross_member_observation_staged_not_cross_written(tmp_memory, fak
     assert not (tmp_memory / "members" / "mom" / "finances.md").exists()
 
 
+async def test_cross_member_observation_promotes_new_person_to_roster(tmp_memory, fake_provider):
+    # M5/#7: an observation about a not-yet-known family member should, after the
+    # session closes, land that person in the always-loaded household roster.
+    fake_provider.payload = {
+        "summary_3_lines": ["bro"],
+        "cross_member_observations": [
+            {"observation": "18 years old, a student", "about": "brother", "basis": "said so"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "p1")
+
+    await close_session("vedant", "p1")
+
+    hh = (tmp_memory / "family" / "household.md").read_text()
+    assert "| brother |" in hh           # promoted into the roster
+    assert "| brother | brother | brother | no |" in hh   # student -> not earning
+    assert is_post_processed("vedant", "p1")
+
+
 async def test_lower_authority_financial_stages_but_session_completes(tmp_memory, fake_provider):
     from backend.agent.writers import write_financial_fact
 

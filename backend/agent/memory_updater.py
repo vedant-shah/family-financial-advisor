@@ -25,6 +25,7 @@ from datetime import date
 from backend.agent.context_registry import REGISTRY
 from backend.agent.current_value import key_for_id
 from backend.agent.llm_provider import LLMProvider, SystemBlock, get_provider
+from backend.agent.promotion import promote_observations
 from backend.agent.transcripts import (
     is_post_processed,
     mark_post_processed,
@@ -614,6 +615,16 @@ async def close_session(member: str, session_id: str) -> None:
 
         today = date.today().isoformat()
         all_ok = _dispatch(member, session_id, raw, today)
+
+        # After staging this session's cross-member observations, promote any
+        # newly-mentioned family members into the household roster (#7). Idempotent
+        # and family-scoped; a failure withholds the stamp so the scan retries.
+        all_ok &= _run(
+            "promote_observations",
+            lambda: promote_observations(
+                settings.resolve(settings.memory_dir), today=today
+            ),
+        )
 
         if all_ok:
             mark_post_processed(member, session_id)
