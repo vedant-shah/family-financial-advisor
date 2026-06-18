@@ -47,7 +47,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--color-bg)]">
+    <div className="flex flex-col h-dvh bg-[var(--color-bg)]">
       <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)] shrink-0">
         <div className="justify-self-start">
           <MemberSwitcher />

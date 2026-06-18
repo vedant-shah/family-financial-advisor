@@ -14,7 +14,7 @@ export function PhaseFlow() {
 
   return (
     <div
-      className="flex h-screen flex-col bg-[var(--color-bg)]"
+      className="flex h-dvh flex-col bg-[var(--color-bg)]"
       style={accentStyle(PHASE_PASTEL[activePhase] ?? 'mint')}
     >
       <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center px-4 py-3">

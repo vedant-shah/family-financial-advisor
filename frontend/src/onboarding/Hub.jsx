@@ -30,7 +30,7 @@ export function Hub() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--color-bg)]">
+    <div className="flex h-dvh flex-col bg-[var(--color-bg)]">
       <header className="flex shrink-0 items-center justify-between px-4 py-3">
         <button
           onClick={exitOnboarding}
@@ -85,7 +85,7 @@ export function Hub() {
 
 function FirstRun({ onStart, onLater }) {
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-[var(--color-bg)] px-6">
+    <div className="flex h-dvh flex-col items-center justify-center bg-[var(--color-bg)] px-6">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

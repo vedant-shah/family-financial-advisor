@@ -47,47 +47,6 @@ _SECTION_HEADERS: dict[str, str] = {
 }
 
 
-def _load_persona(active_member: str) -> str | None:
-    """The persona/voice block (skills/core_system.md), loaded the same way the
-    FULL path loads it. Returned stripped of frontmatter, or None if missing."""
-    for entry in entries_by_policy("always"):
-        if entry.name == "skill.core_system":
-            content = read_markdown_or_none(
-                resolve_path(entry, active_member, settings.project_root)
-            )
-            return strip_frontmatter(content).strip() if content else None
-    return None
-
-
-def _build_minimal_prompt(
-    *,
-    active_member: str,
-    in_session_history: list[dict],
-    user_message: str,
-) -> AssembledPrompt:
-    # MINIMAL skips the member's memory files and the catalog to stay cheap, but
-    # it MUST keep the persona: greetings/chit-chat are routed here, and that is
-    # exactly where the texting voice matters most. Without it the model falls
-    # back to default-assistant voice (markdown, self-introduction, em dashes).
-    today = date.today().isoformat()
-    parts = [
-        "# Session context\n"
-        f"- Today's date: {today}\n"
-        f"- Speaking with: {active_member}"
-    ]
-    persona = _load_persona(active_member)
-    if persona:
-        parts.append(f"# {_SECTION_HEADERS['skill.core_system']}\n{persona}")
-    system = [SystemBlock(text="\n\n".join(parts), cache=False)]
-    messages = in_session_history + [{"role": "user", "content": user_message}]
-    return AssembledPrompt(
-        system=system,
-        messages=messages,
-        context_level="MINIMAL",
-        debug={},
-    )
-
-
 def _build_catalog() -> str:
     lines: list[str] = []
 
@@ -233,12 +192,11 @@ def assemble(
     memory_root,
     skills_root,
 ) -> AssembledPrompt:
-    if classifier_output["context_level"] == "MINIMAL":
-        return _build_minimal_prompt(
-            active_member=active_member,
-            in_session_history=in_session_history,
-            user_message=user_message,
-        )
+    # Memory loads on EVERY turn, regardless of the classifier's context_level.
+    # MINIMAL is no longer allowed to starve the prompt: a greeting the classifier
+    # misjudges must never leave the agent blind to what it has on file (it would
+    # then confidently deny knowing the member). The classifier still selects
+    # intent -> Tier 2 files inside _build_full_prompt.
     return _build_full_prompt(
         active_member=active_member,
         classifier_output=classifier_output,
