@@ -8,7 +8,7 @@ By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md
 
 - **Docker Desktop** (or Docker Engine + Compose v2) — the recommended path; runs the whole stack.
 - An **Anthropic API key** — the advisor calls the Claude API.
-- For running outside Docker: **Python 3.12+** and **Node 20+** (the frontend uses Vite 8).
+- For running outside Docker: **Python 3.12+** and **Node 22.12+** (the frontend uses Vite 8, which requires Node 22.12 or newer).
 
 ## Local setup
 
