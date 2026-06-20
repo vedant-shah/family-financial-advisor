@@ -33,6 +33,7 @@ memory/family/
 memory/members/
 memory/working/
 sessions/
+logs/
 cache/
 
 # ── Secrets ───────────────────────────────────────────────────────────────────

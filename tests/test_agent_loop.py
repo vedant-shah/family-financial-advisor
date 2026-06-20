@@ -115,9 +115,14 @@ async def test_tool_use_round_then_final_text():
     assert events[1].tool_names == ("read_context",)
     assert events[2].text == "here's the answer"
 
-    # The tool call is recorded for the transcript.
+    # The tool call is recorded for the transcript, including the result content.
     assert log == [
-        {"name": "read_context", "input": {"name": "skill.surplus_allocation"}, "ok": True}
+        {
+            "name": "read_context",
+            "input": {"name": "skill.surplus_allocation"},
+            "ok": True,
+            "result": "PLAYBOOK",
+        }
     ]
 
 

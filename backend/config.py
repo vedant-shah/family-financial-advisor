@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     memory_dir: Path = Path("memory")
     skills_dir: Path = Path("skills")
     sessions_dir: Path = Path("sessions")
+    # Durable runtime logging: rotating file under log_dir so a week of logs and
+    # errors survive process restarts (stdout alone is ephemeral).
+    log_dir: Path = Path("logs")
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
     max_response_tokens: int = 2048
     # Hard cap on tool-use round-trips per turn (Tier 3 agent loop), so a model
     # that keeps asking for tools can never loop forever.

@@ -33,6 +33,11 @@ from backend.agent.tools.specs import tool_specs
 
 logger = logging.getLogger(__name__)
 
+# Tool results are echoed into the transcript for the audit; clip long ones so a
+# big playbook or recall dump doesn't bloat the turn line. The full result still
+# reaches the model — only the audit copy is truncated.
+_MAX_TOOL_RESULT_CHARS = 800
+
 
 @dataclass(frozen=True)
 class ToolPhaseBoundary:
@@ -109,7 +114,12 @@ async def run_agent_loop(
         for req in round_tools:
             result = dispatch.execute(req.name, req.input, active_member=active_member)
             tool_calls_log.append(
-                {"name": req.name, "input": req.input, "ok": result.ok}
+                {
+                    "name": req.name,
+                    "input": req.input,
+                    "ok": result.ok,
+                    "result": result.content[:_MAX_TOOL_RESULT_CHARS],
+                }
             )
             result_blocks.append(
                 {

@@ -156,6 +156,7 @@ async def classify(
         tool=_CLASSIFY_TOOL,
         model=settings.classifier_model,
         max_tokens=256,
+        label="classifier",
     )
     result = _build(raw or {}, member)  # None (API error) → {} → safe FULL fallback
     logger.info(

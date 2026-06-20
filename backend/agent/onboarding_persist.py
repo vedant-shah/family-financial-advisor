@@ -16,6 +16,7 @@ gut-check answers -> risk_profile. Those need a schema/mapping decision.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from pathlib import Path
 
@@ -188,12 +189,20 @@ def persist_member_data(memory_root: Path, member: str, data: dict, *, today: st
         )
 
     # Gut-check -> risk_profile.md (tolerance + horizon), sourced as the quiz.
-    for dim, (stance, basis, conf) in _risk_from_checks(data.get("checks") or {}).items():
+    checks = data.get("checks") or {}
+    for dim, (stance, basis, conf) in _risk_from_checks(checks).items():
         writers.write_risk_profile(
             member, dimension=dim, stance=stance, basis=basis,
             confidence=conf, source="onboarding_quiz", as_of=today,
             dedup_id=f"onb:risk:{dim}:{stance}",
         )
+
+    # Free-text note -> notes.md (narrative, always loaded). Dedup on a content
+    # hash so an unchanged re-submit is a NOOP while an edited note appends fresh.
+    note = (checks.get("note") or "").strip()
+    if note:
+        digest = hashlib.md5(note.encode(), usedforsecurity=False).hexdigest()[:8]
+        writers.write_note(member, note=note, date=today, dedup_id=f"onb:note:{digest}")
 
 
 def _valid_iso_date(value) -> str | None:

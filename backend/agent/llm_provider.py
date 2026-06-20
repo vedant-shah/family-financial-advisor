@@ -79,6 +79,7 @@ class LLMProvider(Protocol):
         model: str | None = None,
         max_tokens: int = 1024,
         thinking_budget: int = 0,
+        label: str = "",
     ) -> dict | None:
         """Non-streaming tool-use. Returns the tool's input dict ({} if the tool
         was called with no entries); None when the model made NO tool call or the
@@ -236,6 +237,7 @@ class AnthropicProvider:
         model: str | None = None,
         max_tokens: int = 1024,
         thinking_budget: int = 0,
+        label: str = "",
     ) -> dict | None:
         """Single tool-use, non-streaming. Returns the first tool_use block's
         input as a dict ({} if the tool was called with no entries). Returns None
@@ -262,6 +264,20 @@ class AnthropicProvider:
             kwargs["tool_choice"] = {"type": "tool", "name": tool["name"]}
         try:
             resp = await self._client.messages.create(**kwargs)
+            usage = getattr(resp, "usage", None)
+            if usage is not None:
+                in_tok = getattr(usage, "input_tokens", 0) or 0
+                out_tok = getattr(usage, "output_tokens", 0) or 0
+                logger.info(
+                    "llm_json: label=%s model=%s in=%d out=%d cache_r=%d cache_w=%d cost_usd=%.6f",
+                    label or "-",
+                    chosen_model,
+                    in_tok,
+                    out_tok,
+                    getattr(usage, "cache_read_input_tokens", 0) or 0,
+                    getattr(usage, "cache_creation_input_tokens", 0) or 0,
+                    _compute_cost(chosen_model, in_tok, out_tok),
+                )
             for block in resp.content:
                 if getattr(block, "type", None) == "tool_use":
                     return dict(block.input)

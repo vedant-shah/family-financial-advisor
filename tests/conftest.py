@@ -54,6 +54,19 @@ class ScriptedProvider:
         return {}
 
 
+@pytest.fixture(autouse=True)
+def _reset_sessions_state():
+    """Clear the sessions module's process-global in-memory state before each
+    test. Without this, _active/_activity/_history leak across tests and results
+    depend on execution order (a turn can reuse a session another test created)."""
+    from backend.agent import sessions
+
+    sessions._active.clear()
+    sessions._activity.clear()
+    sessions._history.clear()
+    yield
+
+
 @pytest.fixture
 def fake_provider() -> FakeProvider:
     return FakeProvider()

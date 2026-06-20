@@ -56,6 +56,14 @@ REGISTRY: tuple[ContextEntry, ...] = (
         scope="member",
     ),
     ContextEntry(
+        name="member.notes",
+        path_template="memory/members/{member}/notes.md",
+        description="Free-text notes the member wrote about their situation (onboarding + later)",
+        mode="narrative",
+        preload="always",
+        scope="member",
+    ),
+    ContextEntry(
         name="family.calendar",
         path_template="memory/family/calendar.md",
         description="Recurring events and future state changes",

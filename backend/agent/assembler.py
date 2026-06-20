@@ -39,6 +39,7 @@ _SECTION_HEADERS: dict[str, str] = {
     "family.household": "Household",
     "member.profile": "Member profile",
     "member.conversations": "Recent conversations",
+    "member.notes": "Notes from the member",
     "family.calendar": "Family calendar",
     "member.finances": "Finances (income, expenses, debt)",
     "member.portfolio_summary": "Investments",

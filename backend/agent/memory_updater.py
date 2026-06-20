@@ -601,6 +601,7 @@ async def close_session(member: str, session_id: str) -> None:
             model=settings.summarizer_model,
             max_tokens=8000,
             thinking_budget=settings.summarizer_thinking_budget,
+            label="summarizer",
         )
 
         # None signals the summarizer call FAILED (vs {} for a clean empty

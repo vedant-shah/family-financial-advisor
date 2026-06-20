@@ -37,12 +37,13 @@ from backend.agent.llm_provider import get_provider
 from backend.agent.memory_updater import close_session
 from backend.agent.pipeline import TurnDone, TurnError, TurnToken
 from backend.config import settings
+from backend.logging_setup import configure_logging
 from backend.utils import markdown_io
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s: %(message)s")
-logging.getLogger("httpx").setLevel(logging.WARNING)
+_log_file = configure_logging()
 
 logger = logging.getLogger(__name__)
+logger.info("logging to %s", _log_file)
 
 # Idle poll cadence — sweep stale sessions to summarize and close them.
 _IDLE_SWEEP_SECONDS = 60

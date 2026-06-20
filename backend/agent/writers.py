@@ -152,6 +152,16 @@ def append_conversation_summary(
     _append_entry(writer, p, entry, dedup_id)
 
 
+def write_note(writer: str, *, note: str, date: str, dedup_id: str | None = None) -> None:
+    """Append a free-text member note (narrative) to the writer's notes.md.
+
+    Narrative mode: the pipeline never parses this, it just loads it as context.
+    Used for the onboarding free-text note and any later 'just so you know' prose."""
+    p = _member_file(writer, "notes.md")
+    entry = f"\n## {date}\n{note.strip()}\n"
+    _append_entry(writer, p, entry, dedup_id)
+
+
 def record_status_transition(
     writer: str,
     *,

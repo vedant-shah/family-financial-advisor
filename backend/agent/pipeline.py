@@ -82,6 +82,51 @@ async def run_chat_turn(
             session_id=active_sid,
         )
 
+        # Per-turn state, initialized up front so the transcript can be written
+        # even when the turn errors before reaching its natural end. turn_id is
+        # captured here (from the pre-turn history length) so it's stable
+        # regardless of later history appends.
+        turn_id = transcripts.turn_id_for(len(snapshot))
+        prompt = None
+        last_end: StreamEnd | None = None
+        tool_calls_log: list[dict] = []
+        parts: list[str] = []
+        reply_chunks: list[str] = []
+
+        def _persist(*, assistant_msg: str, error: str | None = None) -> None:
+            # Single chokepoint for the turn's transcript line. Captures what the
+            # agent knew (context level + loaded/missing files), what the model
+            # spent (model + usage + latency + cost from the final StreamEnd),
+            # the tool calls + results, and any error — the raw material for the
+            # weekly audit.
+            transcripts.append_turn(
+                TranscriptRecord(
+                    ts=transcripts.now_iso(),
+                    member=member,
+                    session_id=active_sid,
+                    turn_id=turn_id,
+                    user_msg=user_message,
+                    assistant_msg=assistant_msg,
+                    tool_calls=tuple(tool_calls_log),
+                    intent=classification.intent,
+                    # The classifier's predicted level (still varies per turn);
+                    # loaded_context below shows what actually loaded, since memory
+                    # now always loads regardless of level.
+                    context_level=classification.output.get("context_level", "unknown"),
+                    loaded_context=tuple(prompt.debug.get("loaded", [])) if prompt else (),
+                    missing_context=tuple(prompt.debug.get("missing", [])) if prompt else (),
+                    model=last_end.model if last_end else "",
+                    input_tokens=last_end.input_tokens if last_end else 0,
+                    output_tokens=last_end.output_tokens if last_end else 0,
+                    cache_read_tokens=last_end.cache_read_tokens if last_end else 0,
+                    cache_write_tokens=last_end.cache_write_tokens if last_end else 0,
+                    latency_ms=last_end.latency_ms if last_end else 0.0,
+                    cost_usd=last_end.cost_usd if last_end else 0.0,
+                    stop_reason=last_end.stop_reason if last_end else "",
+                    error=error,
+                )
+            )
+
         try:
             prompt = assemble(
                 active_member=member,
@@ -92,6 +137,7 @@ async def run_chat_turn(
                 skills_root=skills_root,
             )
         except AssemblyError as e:
+            _persist(assistant_msg="", error=str(e))
             yield TurnError(str(e))
             return
 
@@ -102,10 +148,6 @@ async def run_chat_turn(
             prompt.debug.get("loaded", []),
             prompt.debug.get("missing", []),
         )
-
-        tool_calls_log: list[dict] = []
-        parts: list[str] = []
-        reply_chunks: list[str] = []
 
         def _flush() -> str | None:
             # Sanitize the buffered beat through to_bubbles (em-dash strip +
@@ -142,12 +184,16 @@ async def run_chat_turn(
                 if emitted:
                     yield TurnToken(emitted)
             elif isinstance(ev, StreamError):
-                # Exponential-retry seam: wrap the loop above with backoff before
-                # yielding TurnError. Mid-stream failure currently aborts the
-                # turn — no history/transcript write.
+                # Mid-stream failure aborts the turn. We don't append to the
+                # in-session history (a failed turn shouldn't shape the next
+                # prompt), but we DO write a transcript line with the error and
+                # whatever partial text was produced, so the audit sees it.
+                partial = "\n\n".join(to_bubbles("".join(parts)))
+                _persist(assistant_msg=partial, error=f"{ev.code}: {ev.message}")
                 yield TurnError(ev.message)
                 return
             elif isinstance(ev, StreamEnd):
+                last_end = ev
                 logger.info(
                     "llm: model=%s in=%d out=%d cache_r=%d cache_w=%d "
                     "latency_ms=%.0f cost_usd=%.6f stop=%s",
@@ -168,23 +214,10 @@ async def run_chat_turn(
         # Full reply for history/transcript: the bubbles the user saw, in order.
         assistant_msg = "\n\n".join(reply_chunks)
 
-        turn_id = transcripts.turn_id_for(len(snapshot))
-
         sessions.append_history(member, active_sid, "user", user_message)
         sessions.append_history(member, active_sid, "assistant", assistant_msg)
 
-        transcripts.append_turn(
-            TranscriptRecord(
-                ts=transcripts.now_iso(),
-                member=member,
-                session_id=active_sid,
-                turn_id=turn_id,
-                user_msg=user_message,
-                assistant_msg=assistant_msg,
-                tool_calls=tuple(tool_calls_log),
-                intent=classification.intent,
-            )
-        )
+        _persist(assistant_msg=assistant_msg)
 
         logger.info("turn complete: %s/%s/%s", member, active_sid, turn_id)
         yield TurnDone(active_sid, turn_id)

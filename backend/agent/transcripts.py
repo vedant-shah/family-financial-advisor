@@ -1,9 +1,12 @@
 """
 Transcript persistence — single chokepoint for JSONL turn append.
 
-The TranscriptRecord schema is FROZEN at end of Day 2:
-  - `intent` defaults to "unknown" until Day 3 classifier populates it.
-  - `tool_calls` defaults to () until Day 4 tool loop populates it.
+The TranscriptRecord schema evolves append-only: new fields are added with safe
+defaults so older lines and readers keep working.
+  - `intent` defaults to "unknown" until the classifier populates it.
+  - `tool_calls` defaults to () until the tool loop populates it.
+  - observability fields (context_level, loaded_context, model, token usage,
+    latency, cost, stop_reason, error) default until the pipeline populates them.
 
 Only this module may call `markdown_io.append_jsonl` (greppable invariant).
 
@@ -25,8 +28,12 @@ from backend.utils.markdown_io import append_jsonl
 
 logger = logging.getLogger(__name__)
 
-# POSIX PIPE_BUF; lines above this risk interleaved writes under concurrency.
-_MAX_LINE_BYTES = 4096
+# Soft tripwire on line size. On local filesystems an O_APPEND write is atomic
+# regardless of length (PIPE_BUF only bounds atomicity for pipes/FIFOs), and the
+# only concurrent writers here are one request handler and the durability sweep.
+# Richer observability lines routinely exceed the old 4096 cap, so this is a
+# generous warn-only ceiling, not a hard limit.
+_MAX_LINE_BYTES = 32768
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,22 @@ class TranscriptRecord:
     assistant_msg: str
     tool_calls: tuple[dict, ...] = ()
     intent: str = "unknown"
+    # Observability fields (appended over time; all default so older records and
+    # readers keep working). These let a weekly audit explain *why* a turn
+    # behaved as it did: what the agent knew, what its tools returned, what the
+    # model cost, and whether the turn errored.
+    context_level: str = "unknown"
+    loaded_context: tuple[str, ...] = ()  # memory/skill files in the prompt this turn
+    missing_context: tuple[str, ...] = ()  # optional files that were absent
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    latency_ms: float = 0.0
+    cost_usd: float = 0.0
+    stop_reason: str = ""
+    error: str | None = None
 
 
 def now_iso() -> str:
@@ -106,6 +129,8 @@ def append_turn(record: TranscriptRecord) -> None:
     try:
         as_dict = dataclasses.asdict(record)
         as_dict["tool_calls"] = list(record.tool_calls)
+        as_dict["loaded_context"] = list(record.loaded_context)
+        as_dict["missing_context"] = list(record.missing_context)
         line_bytes = len(json.dumps(as_dict, ensure_ascii=False).encode("utf-8"))
         if line_bytes > _MAX_LINE_BYTES:
             logger.warning(
