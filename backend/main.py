@@ -141,7 +141,16 @@ def list_members() -> dict:
 @app.get("/api/history")
 def history(x_member_id: str = Header(..., alias="X-Member-Id")) -> dict:
     _assert_member_exists(x_member_id)
-    active_sid = sessions.get_active(x_member_id, time.monotonic())
+    now = time.monotonic()
+    active_sid = sessions.get_active(x_member_id, now)
+    if active_sid is None:
+        # In-memory state may have been wiped (e.g. a backend restart). Resume the
+        # most recent unclosed, non-stale session from its transcript so the
+        # client doesn't silently lose the conversation. Returns None if there's
+        # nothing fresh to resume.
+        active_sid = durability.adopt_recent_session(
+            x_member_id, now, datetime.now(timezone.utc)
+        )
     if active_sid is None:
         return {"session_id": None, "messages": []}
     return {

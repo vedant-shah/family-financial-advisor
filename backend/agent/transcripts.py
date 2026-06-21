@@ -129,6 +129,38 @@ def is_post_processed(member: str, session_id: str) -> bool:
     return False
 
 
+def read_turns(member: str, session_id: str) -> list[dict]:
+    """Reconstruct in-session history ([{role, content}, ...]) from a transcript:
+    two messages (user, then assistant) per successfully committed turn, in file
+    order. Skips the terminal post-processing event and error turns (which were
+    never appended to in-session history), so the result matches what in-memory
+    state held before a restart. Never raises — returns [] on any error."""
+    path = transcript_path(member, session_id)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    messages: list[dict] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        if record.get("type") == _POST_PROCESSING_TYPE or record.get("error"):
+            continue
+        if "user_msg" not in record:
+            continue
+        messages.append({"role": "user", "content": record.get("user_msg", "")})
+        messages.append({"role": "assistant", "content": record.get("assistant_msg", "")})
+    return messages
+
+
 def append_turn(record: TranscriptRecord) -> None:
     """Append one JSONL line. Errors are logged and swallowed."""
     try:

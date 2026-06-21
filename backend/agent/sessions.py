@@ -90,6 +90,17 @@ def get_history(member: str, session_id: str) -> list[dict]:
     return list(_history.get((member, session_id), []))
 
 
+def adopt(member: str, session_id: str, history: list[dict], now: float) -> None:
+    """Re-register an on-disk session as the active in-memory session for `member`,
+    seeding its history and marking it fresh at `now`. Used to rehydrate after a
+    process restart wiped state, so a returning client resumes its conversation
+    instead of silently losing it. Replaces any existing routing for `member`."""
+    _clear_member(member)
+    _active[member] = session_id
+    _activity[(member, session_id)] = now
+    _history[(member, session_id)] = list(history)
+
+
 def evict_if_active(member: str, session_id: str) -> bool:
     """Clear in-memory routing state for `member` ONLY if `session_id` is
     currently the active session. Returns True if eviction happened.
