@@ -92,6 +92,10 @@ def promote_observations(memory_root: Path, *, today: str) -> None:
     household_path = memory_root / "family" / "household.md"
     rows = _parse_roster_rows(read_markdown_or_none(household_path) or "")
     by_id = {r[0]: r for r in rows}
+    # Relationship words already represented by a real member (e.g. alpa -> "Mother").
+    # A bare relationship-word observation that maps to one of these must not mint a
+    # duplicate orphan row; it already belongs to an existing member.
+    known_relationships = {r[2].lower() for r in rows}
 
     added: list[tuple[str, str, str, str]] = []
     for m in _OBS_RE.finditer(obs):
@@ -99,6 +103,9 @@ def promote_observations(memory_root: Path, *, today: str) -> None:
         text = m.group(2)
         mid = slugify(name)
         earning = _earning(text)
+
+        if name == rel and rel.lower() in known_relationships:
+            continue  # bare relationship word already maps to a roster member
 
         if mid in by_id:
             stored = by_id[mid][3]

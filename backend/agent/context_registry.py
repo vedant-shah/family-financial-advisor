@@ -135,9 +135,9 @@ REGISTRY: tuple[ContextEntry, ...] = (
     ContextEntry(
         name="family.inferences",
         path_template="memory/family/inferences.md",
-        description="Cross-member financial observations (high confidence)",
+        description="Cross-member relevance index: which relative's situation bears on others (relevance + pointer, never figures)",
         mode="current-value",
-        preload="classifier_predicted",
+        preload="always",
         scope="family",
     ),
     # --- agent_invoked: playbooks ---

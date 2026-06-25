@@ -458,3 +458,42 @@ def stage_cross_member_observation(
     p = _working_file("cross_member_observations.md")
     entry = f"{date} — (via {writer}, about {about}): {observation}"
     return append_staging(p, entry=entry, dedup_id=dedup_id)
+
+
+def write_family_inference(
+    writer: str,
+    *,
+    about: str,
+    topic: str,
+    relevance: str,
+    pointer: str = "",
+    lifecycle: str = "ACTIVE",
+    source: str = "inference",
+    confidence: str,
+    as_of: str,
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Upsert one values-free entry into the cross-member relevance index
+    (family/inferences.md, current-value, household-scoped, always-loaded).
+
+    This index is a MAP, not a COPY: it records THAT a relative's situation bears
+    on the rest of the family (`relevance`, in prose) and WHERE the authoritative
+    figure lives (`pointer`, e.g. members/mom/finances.md#liability.home_loan),
+    never the figure itself — the value is fetched live via the family read door
+    so there is a single source of truth and nothing to go stale.
+
+    Keyed by `{about}.{topic}` so distinct topics about the same member coexist
+    while the same topic supersedes (a plain per-member key would silently clobber
+    a second fact). `lifecycle` (ACTIVE / ENDED) retires a relationship that
+    stopped being true, reusing the goals lifecycle pattern; ENDED stays as
+    history. family/ is writable by any member's turn, so the guard passes."""
+    p = settings.resolve(settings.memory_dir) / "family" / "inferences.md"
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    fields = {"subject": about, "relevance": relevance, "lifecycle": lifecycle}
+    if pointer:
+        fields["pointer"] = pointer
+    return upsert_current_value(p, key=f"{about}.{topic}", fields=fields, prov=prov, dedup_id=dedup_id)

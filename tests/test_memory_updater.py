@@ -88,6 +88,89 @@ async def test_recurring_investment_routed_to_finances_not_portfolio(
     assert not (tmp_memory / "members" / "vedant" / "portfolio_summary.md").exists()
 
 
+def test_cross_member_schema_has_relevance_fields():
+    # Option 1: the extractor emits the index fields at the source, so a
+    # financially-relevant observation can be filed without a lossy re-parse.
+    props = memory_updater._SUMMARIZE_TOOL["input_schema"]["properties"][
+        "cross_member_observations"]["items"]["properties"]
+    assert "topic" in props and "relevance" in props and "pointer" in props
+
+
+async def test_financially_relevant_cross_member_obs_writes_index(tmp_memory, fake_provider):
+    # An observation that bears on the family's money picture is staged AND
+    # written to the cross-member relevance index as a values-free pointer entry,
+    # keyed by the same member-id slug the roster uses.
+    fake_provider.payload = {
+        "summary_3_lines": ["dad retiring"],
+        "cross_member_observations": [
+            {
+                "observation": "retiring next year, income stops",
+                "about": "Dharmendra (dad)",
+                "basis": "'my dad retires next year'",
+                "topic": "retirement",
+                "relevance": "his income stops next year, may lean on the family",
+                "pointer": "members/dharmendra/profile.md#identity.earning_status",
+            }
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "xm1")
+
+    await close_session("vedant", "xm1")
+
+    idx = (tmp_memory / "family" / "inferences.md").read_text()
+    assert "## dharmendra.retirement" in idx
+    assert "- subject: dharmendra" in idx
+    assert "income stops next year" in idx
+    assert "- lifecycle: ACTIVE" in idx
+    # Still staged for roster promotion (unchanged behavior).
+    obs = (tmp_memory / "working" / "cross_member_observations.md").read_text()
+    assert "about Dharmendra (dad)" in obs
+
+
+def test_summarizer_prompt_instructs_roster_member_ids():
+    # Cross-member `about` should be the roster member_id (e.g. 'alpa'), not a
+    # relationship word ('mum'), so the index lines up with the read door.
+    sys = memory_updater._SUMMARIZER_SYSTEM.lower()
+    assert "member_id" in sys
+
+
+async def test_household_roster_reaches_extractor(tmp_memory, fake_provider):
+    # The extractor must SEE the roster to name a cross-member subject by its real
+    # member_id instead of guessing a relationship word from the conversation.
+    (tmp_memory / "family").mkdir(parents=True, exist_ok=True)
+    (tmp_memory / "family" / "household.md").write_text(
+        "# Household\n| member_id | Name | Relationship | Earning |\n|---|---|---|---|\n"
+        "| alpa | alpa | Mother | yes |\n"
+    )
+    fake_provider.payload = {"summary_3_lines": ["hi"]}
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "rost1")
+
+    await close_session("vedant", "rost1")
+
+    system_text = "\n".join(b.text for b in fake_provider.last_kwargs["system"])
+    assert "alpa" in system_text
+    assert "Mother" in system_text
+
+
+async def test_non_financial_cross_member_obs_not_indexed(tmp_memory, fake_provider):
+    # An observation with no financial bearing (no topic/relevance) is staged for
+    # the roster but never clutters the always-loaded relevance index.
+    fake_provider.payload = {
+        "summary_3_lines": ["brother likes cricket"],
+        "cross_member_observations": [
+            {"observation": "loves cricket", "about": "brother", "basis": "mentioned it"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "xm2")
+
+    await close_session("vedant", "xm2")
+
+    assert not (tmp_memory / "family" / "inferences.md").exists()
+
+
 async def test_member_notes_reach_extractor(tmp_memory, fake_provider):
     # The narrative onboarding note must reach the extractor too, not just the
     # live agent — otherwise extraction repeats mistakes the note would prevent

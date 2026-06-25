@@ -90,6 +90,30 @@ def test_promotion_is_idempotent(root):
     assert len(brother_rows) == 1
 
 
+def test_relationship_word_not_duplicated_when_member_already_on_roster(root):
+    # alpa is on the roster as "Mother", parshva as "Brother". A stale observation
+    # keyed on the bare relationship word ("mother"/"brother") must NOT mint a
+    # duplicate orphan row, because that relation already maps to a real member.
+    _household(
+        root,
+        "| vedant | vedant | self | yes |\n"
+        "| alpa | alpa | Mother | yes |\n"
+        "| parshva | parshva | Brother | no |\n",
+    )
+    _obs(
+        root,
+        "- 2026-06-19 — (via vedant, about mother): receives monthly family support <!-- id:b -->\n"
+        "- 2026-06-19 — (via vedant, about brother): received a gift <!-- id:c -->\n",
+    )
+    promote_observations(root, today=TODAY)
+
+    hh = (root / "family" / "household.md").read_text()
+    assert "| mother |" not in hh       # no orphan minted
+    assert "| brother |" not in hh      # no orphan minted
+    assert hh.count("| alpa |") == 1
+    assert hh.count("| parshva |") == 1
+
+
 def test_no_observations_is_noop(root):
     _household(root, "| vedant | vedant | self | yes |\n")
     promote_observations(root, today=TODAY)  # no cross_member file at all

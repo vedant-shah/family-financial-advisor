@@ -7,9 +7,11 @@ file or an arbitrary path. This is the first of the scope guards.
 from __future__ import annotations
 
 from backend.agent.context_registry import entries_by_policy
+from backend.agent.tools.read_family_member import CROSS_MEMBER_READABLE
 
 READ_CONTEXT = "read_context"
 RECALL_CONVERSATION = "recall_conversation"
+READ_FAMILY_MEMBER = "read_family_member"
 
 
 def _agent_invoked_names() -> list[str]:
@@ -24,7 +26,11 @@ def tool_specs() -> list[dict]:
                 "Load one on-demand context file by name: a skill playbook or a "
                 "memory file you need but that wasn't already in your context. "
                 "Returns the file's text, or a short error if it can't be read. "
-                "Only call this when you actually need data you don't already have."
+                "Only call this when you actually need data you don't already have. "
+                "If you already know you need several files, call this once per file "
+                "in the SAME turn instead of waiting for each result, they are fetched "
+                "together. Only read one and wait when a later read depends on what an "
+                "earlier one returns."
             ),
             "input_schema": {
                 "type": "object",
@@ -55,6 +61,31 @@ def tool_specs() -> list[dict]:
                     }
                 },
                 "required": ["query"],
+            },
+        },
+        {
+            "name": READ_FAMILY_MEMBER,
+            "description": (
+                "Read one part of ANOTHER family member's money picture, by member "
+                "id (as listed in the household roster) and file. Use when this "
+                "person's decision turns on a relative's situation: a shared goal, "
+                "who depends on whom, a household-level call. Returns the file's "
+                "text, or a short error if it can't be read."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "member": {
+                        "type": "string",
+                        "description": "Member id from the household roster (e.g. 'mom').",
+                    },
+                    "name": {
+                        "type": "string",
+                        "enum": list(CROSS_MEMBER_READABLE),
+                        "description": "Which part of that member's money picture to read.",
+                    },
+                },
+                "required": ["member", "name"],
             },
         },
     ]

@@ -26,7 +26,8 @@ from datetime import date
 from backend.agent.context_registry import REGISTRY
 from backend.agent.current_value import key_for_id
 from backend.agent.llm_provider import LLMProvider, SystemBlock, get_provider
-from backend.agent.promotion import promote_observations
+from backend.agent.promotion import _split_about, promote_observations
+from backend.agent.roster import slugify
 from backend.agent.transcripts import (
     is_post_processed,
     mark_post_processed,
@@ -39,6 +40,7 @@ from backend.agent.writers import (
     record_status_transition,
     stage_cross_member_observation,
     write_asset,
+    write_family_inference,
     write_financial_fact,
     write_goal,
     write_life_event,
@@ -91,6 +93,24 @@ def _existing_memory_for(member: str) -> str:
     return "\n\n".join(sections)
 
 
+def _roster_context(memory_root) -> str | None:
+    """The household roster, handed to the extractor so it can name a cross-member
+    `about` by its real member_id (e.g. 'alpa') instead of a relationship word
+    ('mum') pulled from the conversation. Returns None when there is no roster."""
+    content = read_markdown_or_none(memory_root / "family" / "household.md")
+    if not content:
+        return None
+    body = strip_frontmatter(content).strip()
+    if not body:
+        return None
+    return (
+        "HOUSEHOLD ROSTER — the family members already on record. When a "
+        "cross_member_observation is about someone listed here, set its `about` to "
+        "that person's member_id (the first column), never a relationship word.\n\n"
+        + body
+    )
+
+
 def _resolve_target_key(member: str, fname: str, target_id: str, fallback_key: str) -> str:
     """Resolve an extractor `target_id` to the existing block's canonical key so
     an update lands in place instead of under a parallel key (closes #2/#6). A
@@ -120,7 +140,7 @@ DO
 - asset_updates: the current VALUE of something the member says they HOLD — cash/savings (e.g. an emergency fund), a fixed deposit, EPF/PPF, gold, property, or the balance of a fund, stock, or smallcase. Give the asset class, a short label in their own words, and the value as a single amount they state (a balance, never a per-month contribution).
 - goal_updates: goals set, refined, completed, or cancelled — the action, plus target figure and horizon when stated.
 - inferences: behavioral signals the conversation reveals — risk tolerance and horizon (kind "risk"), or loss aversion, decision style, liquidity comfort, financial anxiety (kind "behavior") — each with its basis and an honest confidence.
-- cross_member_observations: anything the member says about ANOTHER person (e.g. "my dad is retiring next year") — the observation, who it is about, and the basis.
+- cross_member_observations: anything the member says about ANOTHER person (e.g. "my dad is retiring next year") — the observation, who it is about, and the basis. When that observation bears on the family's MONEY picture, when it could change the advice another member gets (a relative retiring, a big shared liability, someone who depends on them, a joint goal), ALSO give a short `topic` (a few words like "retirement" or "home_loan"), a `relevance` phrase saying why it matters financially (no figures, just the relevance), and a `pointer` to where that person's actual number would live if you can name it (e.g. members/<id>/finances.md). Leave topic and relevance out when the remark has no money bearing (a hobby, a mood); a plain observation is fine on its own. For `about`, use the person's member_id from the HOUSEHOLD ROSTER you are given when they are already on it (e.g. "alpa", not "mum" or "mother"); only use a plain name when the person is not yet in the roster.
 - life_events_stated: events the member states — occurred or anticipated — INCLUDING one-off purchases, planned trips, and one-time windfalls (a new gadget, a vacation, an expected bonus or leave encashment). These are the home for anything one-off; they never go into financial_fact_updates.
 - new_recommendations, status_transitions: advice the advisor gave, and any explicit status change to a prior goal or recommendation.
 - Use the member's own framing for labels, titles, and topics, and keep each basis to one short clause.
@@ -262,6 +282,18 @@ _SUMMARIZE_TOOL = {
                         "observation": {"type": "string"},
                         "about": {"type": "string"},
                         "basis": {"type": "string"},
+                        "topic": {
+                            "type": "string",
+                            "description": "Set ONLY if this bears on the family's money picture: a few-word topic like 'retirement' or 'home_loan'.",
+                        },
+                        "relevance": {
+                            "type": "string",
+                            "description": "Why it matters to the family financially, in words, NO figures. Set together with topic, or leave both out.",
+                        },
+                        "pointer": {
+                            "type": "string",
+                            "description": "Optional: where that person's actual figure would live, e.g. members/<id>/finances.md, if you can name it.",
+                        },
                     },
                     "required": ["observation", "about"],
                 },
@@ -556,6 +588,27 @@ def _dispatch(member: str, session_id: str, raw: dict, today: str) -> bool:
                 dedup_id=_dedup_id(session_id, "xmem", about, observation),
             ),
         )
+        # When the observation bears on the family's money picture, also file a
+        # values-free entry in the cross-member relevance index, keyed by the
+        # same member-id slug the roster uses so the pointer/lazy-pull line up.
+        topic = obs.get("topic")
+        relevance = obs.get("relevance")
+        if topic and relevance:
+            about_id = slugify(_split_about(about)[0])
+            all_ok &= _run(
+                "family_inference",
+                lambda about_id=about_id, topic=topic, relevance=relevance, obs=obs: write_family_inference(
+                    member,
+                    about=about_id,
+                    topic=topic,
+                    relevance=relevance,
+                    pointer=obs.get("pointer", ""),
+                    source="inference",
+                    confidence="low",
+                    as_of=today,
+                    dedup_id=_dedup_id(session_id, "famidx", about_id, topic),
+                ),
+            )
 
     for event in raw.get("life_events_stated", []):
         if not isinstance(event, str) or not event.strip():
@@ -637,6 +690,10 @@ async def close_session(member: str, session_id: str) -> None:
                     )
                 )
             )
+
+        roster = _roster_context(settings.resolve(settings.memory_dir))
+        if roster:
+            system_blocks.append(SystemBlock(text=roster))
 
         raw = await _get_provider().complete_json(
             system=system_blocks,

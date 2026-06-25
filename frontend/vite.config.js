@@ -12,6 +12,9 @@ export default defineConfig({
     port: 5173,
     // host: true binds 0.0.0.0 so the dev server is reachable from outside a container.
     host: true,
+    // Allow any *.local Bonjour/mDNS hostname so family devices on the home LAN
+    // can reach the dev server at e.g. http://Vedants-MacBook-Air.local:5173
+    allowedHosts: ['.local'],
     // Bind-mount file events are unreliable on Docker Desktop; poll when asked to.
     watch: process.env.VITE_USE_POLLING ? { usePolling: true } : undefined,
     // '/api/*' proxied with path kept intact (backend serves /api/members etc.)
